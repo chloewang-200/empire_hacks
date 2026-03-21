@@ -13,6 +13,10 @@ import {
   getUserFromBearer,
   signUserToken,
 } from "./auth.js";
+import {
+  dollarsToCents,
+  validateAgentConfiguration,
+} from "./agentGovernance.js";
 import { agentToJson, transactionToJson, walletToJson } from "./mappers.js";
 import { submitAgentTransactionRequest } from "./transactionFlow.js";
 import { stripe, stripeEnabled } from "./stripe.js";
@@ -197,19 +201,102 @@ app.post("/api/auth/token", async (req, reply) => {
   return { token };
 });
 
+const agentInclude = {
+  wallet: true,
+  apiKeys: { where: { revokedAt: null }, orderBy: { createdAt: "desc" as const }, take: 1 },
+} as const;
+
+const optionalMoney = z.number().nonnegative().optional();
+const optionalMoneyNull = z.union([z.number().nonnegative(), z.null()]).optional();
+
+const agentCreateBodySchema = z.object({
+  name: z.string(),
+  /** Spec alias — must match workspace id when provided. */
+  clientId: z.string().optional(),
+  description: z.string().optional(),
+  agentType: z.string().optional(),
+  templateType: z.string().optional(),
+  assignedWalletId: z.string(),
+  role: z.string().optional(),
+  capabilities: z.array(z.string()).optional(),
+  status: z.string().optional(),
+  monthlyAllowance: optionalMoney,
+  approvalThreshold: optionalMoney,
+  maxTransactionAmount: optionalMoney,
+  currency: z.string().length(3).optional(),
+  vendorAllowlist: z.array(z.string()).optional(),
+  vendorDenylist: z.array(z.string()).optional(),
+  allowedPaymentMethods: z.array(z.string()).optional(),
+  settings: z.record(z.unknown()).optional(),
+  metadata: z.record(z.unknown()).optional(),
+});
+
+const agentPatchBodySchema = z.object({
+  name: z.string().optional(),
+  description: z.string().optional().nullable(),
+  agentType: z.string().optional().nullable(),
+  templateType: z.string().optional().nullable(),
+  assignedWalletId: z.string().optional(),
+  role: z.string().optional(),
+  capabilities: z.array(z.string()).optional(),
+  status: z.string().optional(),
+  monthlyAllowance: optionalMoneyNull,
+  approvalThreshold: optionalMoneyNull,
+  maxTransactionAmount: optionalMoneyNull,
+  currency: z.string().length(3).optional(),
+  vendorAllowlist: z.array(z.string()).optional().nullable(),
+  vendorDenylist: z.array(z.string()).optional().nullable(),
+  allowedPaymentMethods: z.array(z.string()).optional().nullable(),
+  settings: z.record(z.unknown()).optional().nullable(),
+  metadata: z.record(z.unknown()).optional().nullable(),
+});
+
 app.get("/api/agents", async (req, reply) => {
   const user = await requireUser(req.headers.authorization);
   const ws = await getWorkspaceForUser(user.id);
   if (!ws) return reply.status(404).send({ message: "No workspace" });
   const { searchParams } = new URL(req.url, "http://localhost");
+  const agentStatus = searchParams.get("agentStatus") ?? undefined;
+  const search = searchParams.get("search")?.trim() || undefined;
+  const cursor = searchParams.get("cursor") ?? undefined;
+  const limitRaw = searchParams.get("limit");
+
+  const where: {
+    workspaceId: string;
+    status?: string;
+    name?: { contains: string };
+  } = { workspaceId: ws.id };
+  if (agentStatus) where.status = agentStatus;
+  if (search) where.name = { contains: search };
+
+  const orderBy = [{ createdAt: "desc" as const }, { id: "desc" as const }];
+
+  if (limitRaw != null || cursor) {
+    const limit = Math.min(100, Math.max(1, parseInt(limitRaw ?? "20", 10)));
+    const rows = await prisma.agent.findMany({
+      where,
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      orderBy,
+      include: agentInclude,
+    });
+    const hasMore = rows.length > limit;
+    const slice = hasMore ? rows.slice(0, limit) : rows;
+    return {
+      data: slice.map((a) => agentToJson(a)),
+      items: slice.map((a) => agentToJson(a)),
+      nextCursor: hasMore ? slice[slice.length - 1]?.id ?? null : null,
+      clientId: ws.id,
+    };
+  }
+
   const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
   const pageSize = Math.min(50, Math.max(1, parseInt(searchParams.get("pageSize") ?? "20", 10)));
-  const where = { workspaceId: ws.id };
   const total = await prisma.agent.count({ where });
   const data = await prisma.agent.findMany({
     where,
-    include: { wallet: true },
-    orderBy: { createdAt: "desc" },
+    include: agentInclude,
+    orderBy,
     skip: (page - 1) * pageSize,
     take: pageSize,
   });
@@ -219,6 +306,8 @@ app.get("/api/agents", async (req, reply) => {
     page,
     pageSize,
     hasMore: page * pageSize < total,
+    nextCursor: null,
+    clientId: ws.id,
   };
 });
 
@@ -226,17 +315,10 @@ app.post("/api/agents", async (req, reply) => {
   const user = await requireUser(req.headers.authorization);
   const ws = await getWorkspaceForUser(user.id);
   if (!ws) return reply.status(404).send({ message: "No workspace" });
-  const body = z
-    .object({
-      name: z.string(),
-      description: z.string().optional(),
-      templateType: z.string().optional(),
-      assignedWalletId: z.string(),
-      role: z.string().optional(),
-      capabilities: z.array(z.string()).optional(),
-      status: z.string().optional(),
-    })
-    .parse(req.body);
+  const body = agentCreateBodySchema.parse(req.body);
+  if (body.clientId != null && body.clientId !== ws.id) {
+    return reply.status(400).send({ message: "clientId must match workspace id" });
+  }
   const wallet = await prisma.wallet.findFirst({
     where: { id: body.assignedWalletId, workspaceId: ws.id },
   });
@@ -248,12 +330,26 @@ app.post("/api/agents", async (req, reply) => {
       walletId: wallet.id,
       name: body.name,
       description: body.description,
+      agentType: body.agentType,
       templateType: body.templateType ?? "custom",
       role: body.role ?? "requester",
       capabilitiesJson: JSON.stringify(caps),
       status: body.status ?? "active",
+      monthlyAllowanceCents:
+        body.monthlyAllowance !== undefined ? dollarsToCents(body.monthlyAllowance) : null,
+      approvalThresholdCents:
+        body.approvalThreshold !== undefined ? dollarsToCents(body.approvalThreshold) : null,
+      maxTransactionAmountCents:
+        body.maxTransactionAmount !== undefined ? dollarsToCents(body.maxTransactionAmount) : null,
+      budgetCurrency: body.currency ?? "USD",
+      vendorAllowlistJson: JSON.stringify(body.vendorAllowlist ?? []),
+      vendorDenylistJson: JSON.stringify(body.vendorDenylist ?? []),
+      allowedPaymentMethodsJson: JSON.stringify(body.allowedPaymentMethods ?? []),
+      settingsJson: JSON.stringify(body.settings ?? {}),
+      metadataJson: JSON.stringify(body.metadata ?? {}),
+      createdByUserId: user.id,
     },
-    include: { wallet: true },
+    include: agentInclude,
   });
   return agentToJson(agent);
 });
@@ -265,7 +361,7 @@ app.get("/api/agents/:id", async (req, reply) => {
   const { id } = req.params as { id: string };
   const agent = await prisma.agent.findFirst({
     where: { id, workspaceId: ws.id },
-    include: { wallet: true },
+    include: agentInclude,
   });
   if (!agent) return reply.status(404).send({ message: "Not found" });
   return agentToJson(agent);
@@ -278,17 +374,7 @@ app.patch("/api/agents/:id", async (req, reply) => {
   const { id } = req.params as { id: string };
   const agent = await prisma.agent.findFirst({ where: { id, workspaceId: ws.id } });
   if (!agent) return reply.status(404).send({ message: "Not found" });
-  const body = z
-    .object({
-      name: z.string().optional(),
-      description: z.string().optional(),
-      templateType: z.string().optional(),
-      assignedWalletId: z.string().optional(),
-      role: z.string().optional(),
-      capabilities: z.array(z.string()).optional(),
-      status: z.string().optional(),
-    })
-    .parse(req.body);
+  const body = agentPatchBodySchema.parse(req.body);
   const walletId =
     body.assignedWalletId != null
       ? (
@@ -303,14 +389,112 @@ app.patch("/api/agents/:id", async (req, reply) => {
     where: { id },
     data: {
       name: body.name ?? undefined,
-      description: body.description,
-      templateType: body.templateType,
+      description: body.description === undefined ? undefined : body.description,
+      agentType: body.agentType === undefined ? undefined : body.agentType,
+      templateType:
+        body.templateType === undefined
+          ? undefined
+          : body.templateType === null
+            ? "custom"
+            : body.templateType,
       walletId: walletId ?? undefined,
-      role: body.role,
+      role:
+        body.role === undefined ? undefined : body.role === null ? "requester" : body.role,
       capabilitiesJson: caps,
       status: body.status,
+      monthlyAllowanceCents:
+        body.monthlyAllowance === undefined
+          ? undefined
+          : body.monthlyAllowance === null
+            ? null
+            : dollarsToCents(body.monthlyAllowance),
+      approvalThresholdCents:
+        body.approvalThreshold === undefined
+          ? undefined
+          : body.approvalThreshold === null
+            ? null
+            : dollarsToCents(body.approvalThreshold),
+      maxTransactionAmountCents:
+        body.maxTransactionAmount === undefined
+          ? undefined
+          : body.maxTransactionAmount === null
+            ? null
+            : dollarsToCents(body.maxTransactionAmount),
+      budgetCurrency: body.currency ?? undefined,
+      vendorAllowlistJson:
+        body.vendorAllowlist === undefined ? undefined : JSON.stringify(body.vendorAllowlist ?? []),
+      vendorDenylistJson:
+        body.vendorDenylist === undefined ? undefined : JSON.stringify(body.vendorDenylist ?? []),
+      allowedPaymentMethodsJson:
+        body.allowedPaymentMethods === undefined
+          ? undefined
+          : JSON.stringify(body.allowedPaymentMethods ?? []),
+      settingsJson: body.settings === undefined ? undefined : JSON.stringify(body.settings ?? {}),
+      metadataJson: body.metadata === undefined ? undefined : JSON.stringify(body.metadata ?? {}),
     },
-    include: { wallet: true },
+    include: agentInclude,
+  });
+  return agentToJson(updated);
+});
+
+app.get("/api/agents/:id/validate", async (req, reply) => {
+  const user = await requireUser(req.headers.authorization);
+  const ws = await getWorkspaceForUser(user.id);
+  if (!ws) return reply.status(404).send({ message: "No workspace" });
+  const { id } = req.params as { id: string };
+  const agent = await prisma.agent.findFirst({
+    where: { id, workspaceId: ws.id },
+    include: {
+      apiKeys: { where: { revokedAt: null }, orderBy: { createdAt: "desc" }, take: 1 },
+    },
+  });
+  if (!agent) return reply.status(404).send({ message: "Not found" });
+  const activeKey = agent.apiKeys[0] ?? null;
+  return validateAgentConfiguration(agent, activeKey);
+});
+
+app.post("/api/agents/:id/pause", async (req, reply) => {
+  const user = await requireUser(req.headers.authorization);
+  const ws = await getWorkspaceForUser(user.id);
+  if (!ws) return reply.status(404).send({ message: "No workspace" });
+  const { id } = req.params as { id: string };
+  const existing = await prisma.agent.findFirst({ where: { id, workspaceId: ws.id } });
+  if (!existing) return reply.status(404).send({ message: "Not found" });
+  const updated = await prisma.agent.update({
+    where: { id },
+    data: { status: "paused" },
+    include: agentInclude,
+  });
+  return agentToJson(updated);
+});
+
+app.post("/api/agents/:id/resume", async (req, reply) => {
+  const user = await requireUser(req.headers.authorization);
+  const ws = await getWorkspaceForUser(user.id);
+  if (!ws) return reply.status(404).send({ message: "No workspace" });
+  const { id } = req.params as { id: string };
+  const existing = await prisma.agent.findFirst({ where: { id, workspaceId: ws.id } });
+  if (!existing) return reply.status(404).send({ message: "Not found" });
+  const updated = await prisma.agent.update({
+    where: { id },
+    data: { status: "active" },
+    include: agentInclude,
+  });
+  return agentToJson(updated);
+});
+
+app.post("/api/agents/:id/revoke", async (req, reply) => {
+  const user = await requireUser(req.headers.authorization);
+  const ws = await getWorkspaceForUser(user.id);
+  if (!ws) return reply.status(404).send({ message: "No workspace" });
+  const { id } = req.params as { id: string };
+  const existing = await prisma.agent.findFirst({ where: { id, workspaceId: ws.id } });
+  if (!existing) return reply.status(404).send({ message: "Not found" });
+  await prisma.agentApiKey.updateMany({ where: { agentId: id }, data: { revokedAt: new Date() } });
+  const updated = await prisma.agent.update({
+    where: { id },
+    data: { status: "revoked" },
+    include: agentInclude,
   });
   return agentToJson(updated);
 });
@@ -807,7 +991,8 @@ app.post("/api/transactions/request", async (req, reply) => {
     if (
       msg === "Wallet not found" ||
       msg === "walletId must match agent wallet" ||
-      msg === "Invalid payeeId for this workspace"
+      msg === "Invalid payeeId for this workspace" ||
+      msg === "Agent not found"
     ) {
       return reply.status(400).send({ message: msg });
     }
@@ -847,7 +1032,8 @@ app.post("/api/transactions/request-as-user", async (req, reply) => {
     if (
       msg === "Wallet not found" ||
       msg === "walletId must match agent wallet" ||
-      msg === "Invalid payeeId for this workspace"
+      msg === "Invalid payeeId for this workspace" ||
+      msg === "Agent not found"
     ) {
       return reply.status(400).send({ message: msg });
     }

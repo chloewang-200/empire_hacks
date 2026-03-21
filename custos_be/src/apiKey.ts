@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import { customAlphabet } from "nanoid";
+import { isAgentSpendAllowedStatus } from "./agentGovernance.js";
 import { prisma } from "./prisma.js";
 
 const nanoid = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 26);
@@ -25,5 +26,6 @@ export async function verifyApiKey(fullKey: string) {
   if (!row) return null;
   const ok = await bcrypt.compare(fullKey, row.keyHash);
   if (!ok) return null;
+  if (!isAgentSpendAllowedStatus(row.agent.status)) return null;
   return row.agent;
 }

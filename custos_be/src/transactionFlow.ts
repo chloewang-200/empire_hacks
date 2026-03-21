@@ -1,8 +1,9 @@
 import { prisma } from "./prisma.js";
 import { parseWalletPolicy, transactionToJson } from "./mappers.js";
-import { evaluatePolicy, applySpendMode } from "./policy.js";
+import { evaluatePolicy, applySpendMode, type PolicyOutcome } from "./policy.js";
 import { matchPayeeByVendor } from "./payeeMatcher.js";
 import { executeAutomatedPayout } from "./payoutExecution.js";
+import { agentMonthSpentCents, evaluateAgentSpendGates } from "./agentGovernance.js";
 
 export type TransactionRequestInput = {
   agentId?: string;
@@ -82,17 +83,54 @@ export async function submitAgentTransactionRequest(
   const requestedPayoutRail =
     body.railType?.trim() || resolvedPayee?.defaultRail || "merchant_card";
 
-  let outcome = evaluatePolicy({
-    policy,
-    amountCents,
-    walletDailySpentCents: daily,
-    vendor: body.vendor,
-    category: body.category,
-    hasEvidence,
-    hasApprovedPayeeMatch,
-    walletBalanceCents: wallet.balanceCents,
-    requestedPayoutRail,
+  const fullAgent = await prisma.agent.findFirst({
+    where: { id: agent.id, workspaceId: agent.workspaceId },
   });
+  if (!fullAgent) throw new Error("Agent not found");
+
+  const monthSpent = await agentMonthSpentCents(fullAgent.id);
+  const agentGate = evaluateAgentSpendGates(
+    fullAgent,
+    {
+      amountCents,
+      vendor: body.vendor,
+      railType: requestedPayoutRail,
+    },
+    monthSpent
+  );
+
+  let outcome: PolicyOutcome;
+  if (agentGate.kind === "block") {
+    outcome = agentGate.outcome;
+  } else {
+    outcome = evaluatePolicy({
+      policy,
+      amountCents,
+      walletDailySpentCents: daily,
+      vendor: body.vendor,
+      category: body.category,
+      hasEvidence,
+      hasApprovedPayeeMatch,
+      walletBalanceCents: wallet.balanceCents,
+      requestedPayoutRail,
+    });
+    outcome = {
+      ...outcome,
+      policyEvaluation: [...agentGate.agentChecks, ...outcome.policyEvaluation],
+    };
+    if (
+      agentGate.forceHumanReview &&
+      outcome.status === "approved" &&
+      outcome.policyResult === "within_policy"
+    ) {
+      outcome = {
+        ...outcome,
+        policyResult: "needs_manual_approval",
+        status: "pending_review",
+        reviewState: "pending",
+      };
+    }
+  }
 
   const ws = await prisma.workspace.findUnique({ where: { id: agent.workspaceId } });
   const spendMode = ws?.spendMode ?? "STRIPE_TEST";

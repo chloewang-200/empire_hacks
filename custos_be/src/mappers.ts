@@ -1,4 +1,5 @@
 import type { Agent as PrismaAgent, Transaction as PrismaTransaction, Wallet as PrismaWallet } from "@prisma/client";
+import { centsToDollars, parseAgentSettings } from "./agentGovernance.js";
 import type { WalletPolicy } from "./types.js";
 
 export function parseWalletPolicy(json: string): WalletPolicy {
@@ -40,7 +41,10 @@ export function walletToJson(
 }
 
 export function agentToJson(
-  a: PrismaAgent & { wallet?: { name: string } }
+  a: PrismaAgent & {
+    wallet?: { name: string };
+    apiKeys?: { id: string; keyPrefix: string; revokedAt: Date | null }[];
+  }
 ): Record<string, unknown> {
   let capabilities: { id: string; name: string }[] = [];
   try {
@@ -49,6 +53,14 @@ export function agentToJson(
   } catch {
     capabilities = [];
   }
+  const activeKeys = (a.apiKeys ?? []).filter((k) => k.revokedAt == null);
+  const activeKey = activeKeys[0];
+  const lists = parseAgentSettings(a);
+  const displayPrefix =
+    activeKey && activeKey.keyPrefix.length >= 8
+      ? `${activeKey.keyPrefix.slice(0, 8)}…`
+      : activeKey?.keyPrefix;
+
   return {
     id: a.id,
     name: a.name,
@@ -61,6 +73,23 @@ export function agentToJson(
     status: a.status,
     createdAt: a.createdAt.toISOString(),
     updatedAt: a.updatedAt.toISOString(),
+    createdByUserId: a.createdByUserId ?? undefined,
+    agentType: a.agentType ?? undefined,
+    monthlyAllowance: centsToDollars(a.monthlyAllowanceCents),
+    approvalThreshold: centsToDollars(a.approvalThresholdCents),
+    maxTransactionAmount: centsToDollars(a.maxTransactionAmountCents),
+    currency: a.budgetCurrency,
+    vendorAllowlist: lists.vendorAllowlist,
+    vendorDenylist: lists.vendorDenylist,
+    allowedPaymentMethods: lists.allowedPaymentMethods,
+    settings: lists.settings,
+    metadata: lists.metadata,
+    agentId: a.id,
+    clientId: a.workspaceId,
+    agentName: a.name,
+    agentStatus: a.status,
+    apiKeyId: activeKey?.id,
+    apiKeyPrefix: displayPrefix ?? null,
   };
 }
 

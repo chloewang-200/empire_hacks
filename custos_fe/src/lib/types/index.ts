@@ -46,6 +46,25 @@ export interface Agent {
   transactionCount?: number;
   createdAt: string;
   updatedAt: string;
+  /** Spec / API: mirrors workspace id */
+  clientId?: string;
+  agentId?: string;
+  agentName?: string;
+  agentType?: string | null;
+  agentStatus?: string;
+  apiKeyId?: string;
+  apiKeyPrefix?: string | null;
+  /** Budget fields in major currency units (API). */
+  monthlyAllowance?: number | null;
+  approvalThreshold?: number | null;
+  maxTransactionAmount?: number | null;
+  currency?: string;
+  vendorAllowlist?: string[];
+  vendorDenylist?: string[];
+  allowedPaymentMethods?: string[];
+  settings?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  createdByUserId?: string;
 }
 
 export type WalletStatus = "active" | "paused" | "restricted";
@@ -99,7 +118,13 @@ export type PolicyResult =
   | "agent_capability_not_allowed"
   | "payee_not_matched"
   | "insufficient_balance"
-  | "payout_rail_not_allowed";
+  | "payout_rail_not_allowed"
+  | "agent_inactive"
+  | "agent_max_transaction_exceeded"
+  | "agent_monthly_allowance_exceeded"
+  | "agent_vendor_denied"
+  | "agent_vendor_not_allowlisted"
+  | "agent_payment_method_blocked";
 
 export interface Evidence {
   id: string;

@@ -79,9 +79,25 @@ model Agent {
   name             String
   description      String?
   templateType     String        @default("custom")
+  /** Spec: agentType — category (distinct from templateType for integrations). */
+  agentType        String?
   role             String        @default("requester")
   capabilitiesJson String      @default("[]")
+  /** active | paused | revoked | deleted | disabled | needs_setup */
   status           String        @default("active")
+  /** Monthly spend cap in cents (null = no agent-level cap). */
+  monthlyAllowanceCents     Int?
+  /** Amount above which human approval is required (agent-level), cents. */
+  approvalThresholdCents    Int?
+  /** Single-transaction ceiling in cents. */
+  maxTransactionAmountCents Int?
+  budgetCurrency            String @default("USD")
+  vendorAllowlistJson       String @default("[]")
+  vendorDenylistJson        String @default("[]")
+  allowedPaymentMethodsJson String @default("[]")
+  settingsJson              String @default("{}")
+  metadataJson              String @default("{}")
+  createdByUserId           String?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
   apiKeys          AgentApiKey[]

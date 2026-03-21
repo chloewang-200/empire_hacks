@@ -82,6 +82,15 @@ const policyWarn = new Set([
   "payout_rail_not_allowed",
 ]);
 
+const policyAgent = new Set([
+  "agent_inactive",
+  "agent_max_transaction_exceeded",
+  "agent_monthly_allowance_exceeded",
+  "agent_vendor_denied",
+  "agent_vendor_not_allowlisted",
+  "agent_payment_method_blocked",
+]);
+
 export function PolicyResultBadge({
   result,
   className,
