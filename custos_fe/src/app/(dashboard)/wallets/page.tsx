@@ -82,12 +82,12 @@ export default function WalletsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Balance</TableHead>
-                <TableHead>Daily limit</TableHead>
-                <TableHead>Per-tx limit</TableHead>
-                <TableHead>Agents</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-10" />
+                <TableHead className="text-right tabular-nums">Balance</TableHead>
+                <TableHead className="text-right tabular-nums">Daily limit</TableHead>
+                <TableHead className="text-right tabular-nums">Per-tx limit</TableHead>
+                <TableHead className="text-center tabular-nums">Agents</TableHead>
+                <TableHead className="text-center">Status</TableHead>
+                <TableHead className="w-12 text-center" aria-label="Actions" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -111,11 +111,11 @@ export default function WalletsPage() {
                       ? formatCurrency(wallet.policy.limits.perTransaction, wallet.currency)
                       : "—"}
                   </TableCell>
-                  <TableCell>{wallet.assignedAgentsCount}</TableCell>
-                  <TableCell>
+                  <TableCell className="text-center tabular-nums">{wallet.assignedAgentsCount}</TableCell>
+                  <TableCell className="text-center">
                     <WalletStatusBadge status={wallet.status} />
                   </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
+                  <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-8 w-8">

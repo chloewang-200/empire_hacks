@@ -10,12 +10,14 @@ import {
   ClipboardList,
   Puzzle,
   Settings,
+  Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/overview", label: "Overview", icon: LayoutDashboard },
   { href: "/wallets", label: "Wallets", icon: Wallet },
+  { href: "/payees", label: "Payees", icon: Building2 },
   { href: "/agents", label: "Agents", icon: Bot },
   { href: "/transactions", label: "Transactions", icon: Receipt },
   { href: "/review-queue", label: "Review Queue", icon: ClipboardList },

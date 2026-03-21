@@ -136,6 +136,20 @@ export default function WalletDetailPage() {
               {wallet.policy.allowedCategories.join(", ")}
             </p>
           ) : null}
+          <p className="text-body-sm">
+            <span className="text-muted-foreground">Approved payee required:</span>{" "}
+            {wallet.policy?.requireApprovedPayee ? "Yes" : "No"}
+          </p>
+          <p className="text-body-sm">
+            <span className="text-muted-foreground">Auto payout:</span>{" "}
+            {wallet.policy?.autoExecutePayout ? "On" : "Off"}
+          </p>
+          {wallet.policy?.allowedPayoutRails?.length ? (
+            <p className="text-body-sm">
+              <span className="text-muted-foreground">Allowed rails:</span>{" "}
+              {wallet.policy.allowedPayoutRails.join(", ")}
+            </p>
+          ) : null}
         </CardContent>
       </Card>
 

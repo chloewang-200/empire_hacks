@@ -27,9 +27,32 @@ model Workspace {
   fundingPreference String   @default("BOTH")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  wallets   Wallet[]
-  agents    Agent[]
-  transactions Transaction[]
+  wallets        Wallet[]
+  agents         Agent[]
+  transactions   Transaction[]
+  approvedPayees ApprovedPayee[]
+}
+
+model ApprovedPayee {
+  id                   String   @id @default(cuid())
+  workspaceId          String
+  workspace            Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  displayName          String
+  legalName            String?
+  /** JSON string array — alternate vendor strings for auto-match */
+  aliasesJson          String   @default("[]")
+  defaultRail          String   @default("merchant_card")
+  /** Masked hint, e.g. "Chase checking ****4521" */
+  paymentInstructions  String?
+  /** Stripe Connect connected account (acct_…) for automated transfers */
+  stripeConnectAccountId String?
+  notes                String?
+  active               Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  transactions         Transaction[]
+
+  @@index([workspaceId])
 }
 
 model Wallet {
@@ -96,10 +119,22 @@ model Transaction {
   vendor         String?
   category       String?
   memo           String?
+  /** Why the agent initiated this spend (audit). */
+  purpose        String?
+  /** Structured agent context (JSON). */
+  contextJson    String?
   idempotencyKey String?
   evidenceJson   String?
   policyEvalJson String?
   auditJson      String?
+  payeeId        String?
+  payee          ApprovedPayee? @relation(fields: [payeeId], references: [id], onDelete: SetNull)
+  /** not_attempted | skipped | processing | succeeded | failed | unsupported_rail */
+  payoutStatus   String?
+  payoutProvider String?
+  payoutExternalId String?
+  payoutError    String?
+  payoutAttemptedAt DateTime?
   settledAt      DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt

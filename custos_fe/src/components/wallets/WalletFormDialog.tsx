@@ -30,11 +30,14 @@ import {
 import { createWallet, updateWallet } from "@/lib/api/wallets";
 import { walletFormSchema, type WalletFormValues } from "@/lib/validators/wallet";
 import { APPROVAL_MODES } from "@/lib/constants";
+import type { WalletPolicy } from "@/lib/types";
 
 interface WalletFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   walletId?: string;
+  /** When editing, merge so policy fields not in the form are preserved server-side. */
+  existingPolicy?: WalletPolicy;
   defaultValues?: Partial<WalletFormValues>;
 }
 
@@ -54,6 +57,9 @@ export function WalletFormDialog({
       perTransactionLimit: defaultValues?.perTransactionLimit,
       allowedCategories: defaultValues?.allowedCategories ?? [],
       approvalMode: "review",
+      requireApprovedPayee: defaultValues?.requireApprovedPayee ?? false,
+      autoExecutePayout: defaultValues?.autoExecutePayout ?? false,
+      allowedPayoutRailsText: defaultValues?.allowedPayoutRailsText ?? "",
       status: "active",
       ...defaultValues,
     },
@@ -81,6 +87,7 @@ export function WalletFormDialog({
           perTransaction: values.perTransactionLimit,
         },
         allowedCategories: values.allowedCategories,
+        requireApprovedPayee: values.requireApprovedPayee === true,
         status: values.status,
       },
       status: values.status,
@@ -190,6 +197,75 @@ export function WalletFormDialog({
                       ))}
                     </SelectContent>
                   </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="requireApprovedPayee"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-start gap-3 rounded-lg border border-border p-4">
+                  <FormControl>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(field.value)}
+                      onChange={(e) => field.onChange(e.target.checked)}
+                      className="mt-1 h-4 w-4 rounded border-input"
+                    />
+                  </FormControl>
+                  <div className="space-y-1 leading-none">
+                    <FormLabel className="text-sm font-medium">Require approved payee</FormLabel>
+                    <p className="text-caption text-muted-foreground">
+                      Spend requests must match an entry in{" "}
+                      <span className="font-medium text-foreground">Payees</span> (by vendor string or explicit{" "}
+                      <code className="text-xs">payeeId</code>
+                      ), or they are sent to review.
+                    </p>
+                  </div>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="autoExecutePayout"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-start gap-3 rounded-lg border border-border p-4">
+                  <FormControl>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(field.value)}
+                      onChange={(e) => field.onChange(e.target.checked)}
+                      className="mt-1 h-4 w-4 rounded border-input"
+                    />
+                  </FormControl>
+                  <div className="space-y-1 leading-none">
+                    <FormLabel className="text-sm font-medium">Auto-execute payout</FormLabel>
+                    <p className="text-caption text-muted-foreground">
+                      When policy approves and balance covers the amount, attempt a real transfer (Stripe Connect to{" "}
+                      <code className="text-xs">acct_…</code>
+                      ). Venmo and other rails may be marked for manual follow-up.
+                    </p>
+                  </div>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="allowedPayoutRailsText"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Allowed payout rails (optional)</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="e.g. stripe_connect, merchant_card"
+                      {...field}
+                    />
+                  </FormControl>
+                  <p className="text-caption text-muted-foreground">
+                    If set, the agent&apos;s requested rail must match one of these (comma-separated). Leave empty for
+                    any rail.
+                  </p>
                   <FormMessage />
                 </FormItem>
               )}

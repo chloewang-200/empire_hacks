@@ -39,13 +39,20 @@ export interface RequestTransactionBody {
   vendor?: string;
   category?: string;
   memo?: string;
+  /** Why the agent is requesting this spend (audit trail) */
+  purpose?: string;
+  /** Structured proof-of-work / metadata (invoice #, tool run id, etc.) */
+  context?: Record<string, unknown>;
+  /** Override directory match — must be an approved payee id */
+  payeeId?: string;
   railType?: string;
   sourceKind?: string;
   evidence?: { type: string; [k: string]: unknown }[];
 }
 
+/** Dashboard & invoice UI — user JWT; same payload shape as agent API. */
 export async function requestTransaction(body: RequestTransactionBody): Promise<Transaction> {
-  return apiPost<Transaction>("/api/transactions/request", body);
+  return apiPost<Transaction>("/api/transactions/request-as-user", body);
 }
 
 export interface ReviewTransactionBody {

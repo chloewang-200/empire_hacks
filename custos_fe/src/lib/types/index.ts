@@ -62,6 +62,12 @@ export interface WalletPolicy {
   allowedCategories?: string[];
   allowedVendors?: string[];
   restrictedVendors?: string[];
+  /** When true, spend requests must match an approved payee or go to review */
+  requireApprovedPayee?: boolean;
+  /** After policy approves, attempt real payout (e.g. Stripe Connect transfer) */
+  autoExecutePayout?: boolean;
+  /** Requested rail must be in this list when set (e.g. stripe_connect, merchant_card) */
+  allowedPayoutRails?: string[];
 }
 
 export interface Wallet {
@@ -90,7 +96,10 @@ export type PolicyResult =
   | "missing_proof"
   | "needs_manual_approval"
   | "category_not_allowed"
-  | "agent_capability_not_allowed";
+  | "agent_capability_not_allowed"
+  | "payee_not_matched"
+  | "insufficient_balance"
+  | "payout_rail_not_allowed";
 
 export interface Evidence {
   id: string;
@@ -114,6 +123,15 @@ export type TransactionRailType =
 
 export type TransactionSourceKind = "api" | "invoice_upload" | "manual";
 
+export interface MatchedPayeeSummary {
+  id: string;
+  displayName: string;
+  defaultRail: string;
+  paymentInstructions?: string;
+  /** Stripe Connect destination acct_… when configured */
+  stripeConnectAccountId?: string;
+}
+
 export interface Transaction {
   id: string;
   requestedAt: string;
@@ -127,6 +145,11 @@ export interface Transaction {
   amount: number;
   currency: string;
   memo?: string;
+  /** Agent-declared reason for the spend (audit) */
+  purpose?: string;
+  /** Structured metadata from the agent (audit) */
+  context?: Record<string, unknown>;
+  matchedPayee?: MatchedPayeeSummary;
   status: TransactionStatus;
   policyResult?: PolicyResult;
   reviewState?: "pending" | "approved" | "rejected";
@@ -137,6 +160,11 @@ export interface Transaction {
   /** Payout / rail classification */
   railType?: TransactionRailType | string;
   sourceKind?: TransactionSourceKind | string;
+  payoutStatus?: string;
+  payoutProvider?: string;
+  payoutExternalId?: string;
+  payoutError?: string;
+  payoutAttemptedAt?: string;
 }
 
 export interface PolicyEvaluationItem {
@@ -151,6 +179,22 @@ export interface AuditEvent {
   action: string;
   actor?: string;
   detail?: string;
+  /** request | agent_context | payee_resolution | evidence | policy | human */
+  type?: string;
+}
+
+export interface ApprovedPayee {
+  id: string;
+  displayName: string;
+  legalName?: string;
+  aliases: string[];
+  defaultRail: string;
+  paymentInstructions?: string;
+  stripeConnectAccountId?: string;
+  notes?: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ReviewItem {

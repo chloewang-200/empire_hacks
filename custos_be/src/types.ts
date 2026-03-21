@@ -13,6 +13,12 @@ export interface WalletPolicy {
   allowedCategories?: string[];
   allowedVendors?: string[];
   restrictedVendors?: string[];
+  /** When true, vendor must match an approved payee (or explicit payeeId) or request goes to review */
+  requireApprovedPayee?: boolean;
+  /** After policy approves, attempt real money movement (Stripe Connect, etc.) */
+  autoExecutePayout?: boolean;
+  /** If set, requested payout rail must be one of these (e.g. stripe_connect, venmo_p2p) */
+  allowedPayoutRails?: string[];
 }
 
 export type PolicyResult =
@@ -22,7 +28,10 @@ export type PolicyResult =
   | "missing_proof"
   | "needs_manual_approval"
   | "category_not_allowed"
-  | "agent_capability_not_allowed";
+  | "agent_capability_not_allowed"
+  | "payee_not_matched"
+  | "insufficient_balance"
+  | "payout_rail_not_allowed";
 
 export type TransactionStatus =
   | "approved"

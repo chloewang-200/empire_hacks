@@ -26,7 +26,10 @@ export interface CreateWalletBody {
     limits: { daily?: number; perTransaction?: number };
     allowedCategories?: string[];
     allowedVendors?: string[];
-    status?: string;
+    restrictedVendors?: string[];
+    requireApprovedPayee?: boolean;
+    autoExecutePayout?: boolean;
+    allowedPayoutRails?: string[];
   };
   status?: string;
   notes?: string;

@@ -11,6 +11,7 @@ const labels: Record<string, string> = {
   transactions: "Transactions",
   "review-queue": "Review Queue",
   templates: "Agent Templates",
+  payees: "Payees",
   invoice: "Invoice Agent",
   settings: "Settings",
 };

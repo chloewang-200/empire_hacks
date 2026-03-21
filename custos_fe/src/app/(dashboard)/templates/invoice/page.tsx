@@ -9,8 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { uploadInvoice, extractInvoice } from "@/lib/api/invoice";
 import { requestTransaction } from "@/lib/api/transactions";
+import { getPayees } from "@/lib/api/payees";
 import type { InvoiceExtractionResult } from "@/lib/types";
 import { TransactionStatusBadge } from "@/components/status/StatusBadge";
 import { formatCurrency } from "@/lib/utils";
@@ -26,6 +28,8 @@ export default function InvoiceAgentPage() {
   const [txResult, setTxResult] = useState<Awaited<ReturnType<typeof requestTransaction>> | null>(null);
   const [walletId, setWalletId] = useState("");
   const [agentId, setAgentId] = useState("");
+  const [purpose, setPurpose] = useState("");
+  const [payeeOverrideId, setPayeeOverrideId] = useState("");
 
   const { data: walletsData } = useQuery({
     queryKey: ["wallets", { page: 1, pageSize: 100 }],
@@ -34,6 +38,10 @@ export default function InvoiceAgentPage() {
   const { data: agentsData } = useQuery({
     queryKey: ["agents", { page: 1, pageSize: 100 }],
     queryFn: () => getAgents({ page: 1, pageSize: 100 }),
+  });
+  const { data: payees = [] } = useQuery({
+    queryKey: ["payees"],
+    queryFn: getPayees,
   });
   const wallets = walletsData?.data ?? [];
   const agents = agentsData?.data ?? [];
@@ -47,6 +55,13 @@ export default function InvoiceAgentPage() {
       setWalletId(agent.assignedWalletId);
     }
   }, [searchParams, agents]);
+
+  useEffect(() => {
+    if (!extraction) return;
+    const inv = extraction.invoiceNumber ?? "—";
+    const v = extraction.vendor ?? "vendor";
+    setPurpose((p) => (p.trim() ? p : `Settle invoice ${inv} from ${v} (uploaded document)`));
+  }, [extraction]);
 
   const uploadMutation = useMutation({
     mutationFn: (f: File) => uploadInvoice(f),
@@ -73,6 +88,8 @@ export default function InvoiceAgentPage() {
       setFileId(null);
       setExtraction(null);
       setTxResult(null);
+      setPurpose("");
+      setPayeeOverrideId("");
     }
   }
 
@@ -95,8 +112,19 @@ export default function InvoiceAgentPage() {
       currency: wallet?.currency ?? "USD",
       vendor: extraction.vendor,
       memo: extraction.memo,
+      purpose: purpose.trim() || undefined,
+      payeeId: payeeOverrideId || undefined,
+      sourceKind: "invoice_upload",
+      context: {
+        source: "invoice_agent",
+        fileId: fileId ?? undefined,
+        invoiceNumber: extraction.invoiceNumber,
+        dueDate: extraction.dueDate,
+        extractionConfidence: extraction.confidence,
+        originalFilename: file?.name,
+      },
       evidence: fileId
-        ? [{ type: "invoice", fileId, ...extraction }]
+        ? [{ type: "invoice", fileId, filename: file?.name, ...extraction }]
         : undefined,
     });
   }
@@ -106,7 +134,14 @@ export default function InvoiceAgentPage() {
       <div>
         <h1 className="text-heading-1 text-foreground">Invoice Agent</h1>
         <p className="mt-1 text-body-sm text-muted-foreground">
-          Upload an invoice, extract fields, and submit a payment request for policy evaluation.
+          Upload an invoice, extract fields, and submit a payment request with purpose, proof, and optional payee
+          override. Full audit trail is on the transaction record.
+        </p>
+        <p className="mt-2 text-caption text-muted-foreground">
+          <Link href="/payees" className="font-medium text-primary underline-offset-4 hover:underline">
+            Manage approved payees
+          </Link>{" "}
+          so vendor strings match your directory (or require a match in wallet policy).
         </p>
         {searchParams.get("agentId") && (
           <p className="mt-2 text-caption text-muted-foreground">
@@ -199,32 +234,59 @@ export default function InvoiceAgentPage() {
                   </div>
                 )}
               </div>
-              <div className="flex flex-wrap gap-2 pt-2">
-                <Label className="w-full text-muted-foreground">Submit payment request</Label>
-                <select
-                  className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  value={walletId}
-                  onChange={(e) => setWalletId(e.target.value)}
-                >
-                  <option value="">Select wallet</option>
-                  {wallets.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.name}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  value={agentId}
-                  onChange={(e) => setAgentId(e.target.value)}
-                >
-                  <option value="">Select agent</option>
-                  {agents.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
+              <div className="flex flex-col gap-3 pt-2">
+                <Label className="text-muted-foreground">Purpose (audit — why this payment)</Label>
+                <Textarea
+                  value={purpose}
+                  onChange={(e) => setPurpose(e.target.value)}
+                  rows={3}
+                  className="resize-none text-sm"
+                  placeholder="Shown on the transaction audit trail"
+                />
+                <Label className="text-muted-foreground">Submit payment request</Label>
+                <div className="flex flex-wrap gap-2">
+                  <select
+                    className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={walletId}
+                    onChange={(e) => setWalletId(e.target.value)}
+                  >
+                    <option value="">Select wallet</option>
+                    {wallets.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={agentId}
+                    onChange={(e) => setAgentId(e.target.value)}
+                  >
+                    <option value="">Select agent</option>
+                    {agents.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Override approved payee (optional)</Label>
+                  <select
+                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm sm:max-w-md"
+                    value={payeeOverrideId}
+                    onChange={(e) => setPayeeOverrideId(e.target.value)}
+                  >
+                    <option value="">Auto-match from vendor string</option>
+                    {payees
+                      .filter((p) => p.active)
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.displayName}
+                        </option>
+                      ))}
+                  </select>
+                </div>
                 <Button
                   onClick={handleSubmitRequest}
                   disabled={

@@ -13,8 +13,8 @@ import {
   getUserFromBearer,
   signUserToken,
 } from "./auth.js";
-import { agentToJson, parseWalletPolicy, transactionToJson, walletToJson } from "./mappers.js";
-import { evaluatePolicy, type PolicyOutcome } from "./policy.js";
+import { agentToJson, transactionToJson, walletToJson } from "./mappers.js";
+import { submitAgentTransactionRequest } from "./transactionFlow.js";
 import { stripe, stripeEnabled } from "./stripe.js";
 import { z } from "zod";
 
@@ -360,7 +360,7 @@ app.get("/api/agents/:agentId/transactions", async (req, reply) => {
   const total = await prisma.transaction.count({ where });
   const rows = await prisma.transaction.findMany({
     where,
-    include: { agent: true, wallet: true },
+    include: { agent: true, wallet: true, payee: true },
     orderBy: { createdAt: "desc" },
     skip: (page - 1) * pageSize,
     take: pageSize,
@@ -413,6 +413,9 @@ app.post("/api/wallets", async (req, reply) => {
           limits: z.object({ daily: z.number().optional(), perTransaction: z.number().optional() }),
           allowedCategories: z.array(z.string()).optional(),
           allowedVendors: z.array(z.string()).optional(),
+          requireApprovedPayee: z.boolean().optional(),
+          autoExecutePayout: z.boolean().optional(),
+          allowedPayoutRails: z.array(z.string()).optional(),
         })
         .optional(),
       status: z.string().optional(),
@@ -464,6 +467,9 @@ app.patch("/api/wallets/:id", async (req, reply) => {
           approvalMode: z.string(),
           limits: z.object({ daily: z.number().optional(), perTransaction: z.number().optional() }),
           allowedCategories: z.array(z.string()).optional(),
+          requireApprovedPayee: z.boolean().optional(),
+          autoExecutePayout: z.boolean().optional(),
+          allowedPayoutRails: z.array(z.string()).optional(),
         })
         .optional(),
       status: z.string().optional(),
@@ -609,7 +615,7 @@ app.get("/api/wallets/:walletId/transactions", async (req, reply) => {
   const total = await prisma.transaction.count({ where });
   const rows = await prisma.transaction.findMany({
     where,
-    include: { agent: true, wallet: true },
+    include: { agent: true, wallet: true, payee: true },
     orderBy: { createdAt: "desc" },
     skip: (page - 1) * pageSize,
     take: pageSize,
@@ -623,32 +629,153 @@ app.get("/api/wallets/:walletId/transactions", async (req, reply) => {
   };
 });
 
-async function walletDailySpentCents(walletId: string): Promise<number> {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const agg = await prisma.transaction.aggregate({
-    where: {
-      walletId,
-      createdAt: { gte: start },
-      status: { in: ["approved", "pending_review", "settled"] },
-    },
-    _sum: { amountCents: true },
-  });
-  return agg._sum.amountCents ?? 0;
+const transactionRequestBodySchema = z.object({
+  agentId: z.string().optional(),
+  walletId: z.string().optional(),
+  amount: z.number(),
+  currency: z.string().optional(),
+  recipient: z.string().optional(),
+  vendor: z.string().optional(),
+  category: z.string().optional(),
+  memo: z.string().optional(),
+  purpose: z.string().optional(),
+  context: z.record(z.unknown()).optional(),
+  payeeId: z.string().optional(),
+  railType: z.string().optional(),
+  sourceKind: z.string().optional(),
+  evidence: z.array(z.any()).optional(),
+  idempotencyKey: z.string().optional(),
+  stripeConnectAccountId: z.string().optional(),
+  venmoHandle: z.string().optional(),
+});
+
+function payeeToJson(p: {
+  id: string;
+  displayName: string;
+  legalName: string | null;
+  aliasesJson: string;
+  defaultRail: string;
+  paymentInstructions: string | null;
+  stripeConnectAccountId: string | null;
+  notes: string | null;
+  active: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  let aliases: string[] = [];
+  try {
+    aliases = JSON.parse(p.aliasesJson) as string[];
+    if (!Array.isArray(aliases)) aliases = [];
+  } catch {
+    aliases = [];
+  }
+  return {
+    id: p.id,
+    displayName: p.displayName,
+    legalName: p.legalName ?? undefined,
+    aliases,
+    defaultRail: p.defaultRail,
+    paymentInstructions: p.paymentInstructions ?? undefined,
+    stripeConnectAccountId: p.stripeConnectAccountId ?? undefined,
+    notes: p.notes ?? undefined,
+    active: p.active,
+    createdAt: p.createdAt.toISOString(),
+    updatedAt: p.updatedAt.toISOString(),
+  };
 }
 
-function applySpendMode(spendMode: string, outcome: PolicyOutcome): PolicyOutcome {
-  if (spendMode !== "MANUAL_REAL") return outcome;
-  if (outcome.status === "approved") {
-    return {
-      ...outcome,
-      policyResult: "needs_manual_approval",
-      status: "pending_review",
-      reviewState: "pending",
-    };
-  }
-  return outcome;
-}
+app.get("/api/payees", async (req, reply) => {
+  const user = await requireUser(req.headers.authorization);
+  const ws = await getWorkspaceForUser(user.id);
+  if (!ws) return reply.status(404).send({ message: "No workspace" });
+  const rows = await prisma.approvedPayee.findMany({
+    where: { workspaceId: ws.id },
+    orderBy: { displayName: "asc" },
+  });
+  return { data: rows.map(payeeToJson) };
+});
+
+app.post("/api/payees", async (req, reply) => {
+  const user = await requireUser(req.headers.authorization);
+  const ws = await getWorkspaceForUser(user.id);
+  if (!ws) return reply.status(404).send({ message: "No workspace" });
+  const body = z
+    .object({
+      displayName: z.string().min(1),
+      legalName: z.string().optional(),
+      aliases: z.array(z.string()).optional(),
+      defaultRail: z.string().optional(),
+      paymentInstructions: z.string().optional(),
+      notes: z.string().optional(),
+      stripeConnectAccountId: z.string().optional(),
+      active: z.boolean().optional(),
+    })
+    .parse(req.body);
+  const p = await prisma.approvedPayee.create({
+    data: {
+      workspaceId: ws.id,
+      displayName: body.displayName.trim(),
+      legalName: body.legalName?.trim() || null,
+      aliasesJson: JSON.stringify(body.aliases ?? []),
+      defaultRail: body.defaultRail ?? "merchant_card",
+      paymentInstructions: body.paymentInstructions?.trim() || null,
+      stripeConnectAccountId: body.stripeConnectAccountId?.trim() || null,
+      notes: body.notes?.trim() || null,
+      active: body.active ?? true,
+    },
+  });
+  return payeeToJson(p);
+});
+
+app.patch("/api/payees/:id", async (req, reply) => {
+  const user = await requireUser(req.headers.authorization);
+  const ws = await getWorkspaceForUser(user.id);
+  if (!ws) return reply.status(404).send({ message: "No workspace" });
+  const { id } = req.params as { id: string };
+  const existing = await prisma.approvedPayee.findFirst({ where: { id, workspaceId: ws.id } });
+  if (!existing) return reply.status(404).send({ message: "Not found" });
+  const body = z
+    .object({
+      displayName: z.string().min(1).optional(),
+      legalName: z.string().optional().nullable(),
+      aliases: z.array(z.string()).optional(),
+      defaultRail: z.string().optional(),
+      paymentInstructions: z.string().optional().nullable(),
+      notes: z.string().optional().nullable(),
+      stripeConnectAccountId: z.string().optional().nullable(),
+      active: z.boolean().optional(),
+    })
+    .parse(req.body);
+  const p = await prisma.approvedPayee.update({
+    where: { id },
+    data: {
+      displayName: body.displayName?.trim(),
+      legalName: body.legalName === undefined ? undefined : body.legalName?.trim() ?? null,
+      aliasesJson: body.aliases !== undefined ? JSON.stringify(body.aliases) : undefined,
+      defaultRail: body.defaultRail,
+      paymentInstructions:
+        body.paymentInstructions === undefined ? undefined : body.paymentInstructions?.trim() ?? null,
+      stripeConnectAccountId:
+        body.stripeConnectAccountId === undefined
+          ? undefined
+          : body.stripeConnectAccountId?.trim() || null,
+      notes: body.notes === undefined ? undefined : body.notes?.trim() ?? null,
+      active: body.active,
+    },
+  });
+  return payeeToJson(p);
+});
+
+app.delete("/api/payees/:id", async (req, reply) => {
+  const user = await requireUser(req.headers.authorization);
+  const ws = await getWorkspaceForUser(user.id);
+  if (!ws) return reply.status(404).send({ message: "No workspace" });
+  const { id } = req.params as { id: string };
+  const existing = await prisma.approvedPayee.findFirst({ where: { id, workspaceId: ws.id } });
+  if (!existing) return reply.status(404).send({ message: "Not found" });
+  await prisma.approvedPayee.delete({ where: { id } });
+  return { ok: true };
+});
 
 app.post("/api/transactions/request", async (req, reply) => {
   const auth = req.headers.authorization;
@@ -656,101 +783,77 @@ app.post("/api/transactions/request", async (req, reply) => {
   if (!agentKey.startsWith("custos_")) {
     return reply.status(401).send({ message: "Agent API key required (Bearer custos_xxx)" });
   }
-  const agent = await verifyApiKey(agentKey);
-  if (!agent) return reply.status(401).send({ message: "Invalid API key" });
+  const agentRow = await verifyApiKey(agentKey);
+  if (!agentRow) return reply.status(401).send({ message: "Invalid API key" });
 
-  const body = z
-    .object({
-      agentId: z.string().optional(),
-      walletId: z.string().optional(),
-      amount: z.number(),
-      currency: z.string().optional(),
-      recipient: z.string().optional(),
-      vendor: z.string().optional(),
-      category: z.string().optional(),
-      memo: z.string().optional(),
-      railType: z.string().optional(),
-      sourceKind: z.string().optional(),
-      evidence: z.array(z.any()).optional(),
-      idempotencyKey: z.string().optional(),
-    })
-    .parse(req.body);
+  const body = transactionRequestBodySchema.parse(req.body);
 
-  if (body.agentId && body.agentId !== agent.id) {
+  if (body.agentId && body.agentId !== agentRow.id) {
     return reply.status(401).send({ message: "agentId mismatch" });
   }
-  const walletId = body.walletId ?? agent.walletId;
-  if (walletId !== agent.walletId) {
-    return reply.status(400).send({ message: "walletId must match agent wallet" });
-  }
 
-  const wallet = await prisma.wallet.findFirst({
-    where: { id: walletId, workspaceId: agent.workspaceId },
-  });
-  if (!wallet) return reply.status(400).send({ message: "Wallet not found" });
-
-  const policy = parseWalletPolicy(wallet.policyJson);
-  const amountCents = Math.round(body.amount * 100);
-  const daily = await walletDailySpentCents(wallet.id);
-  const hasEvidence = (body.evidence?.length ?? 0) > 0;
-
-  let outcome = evaluatePolicy({
-    policy,
-    amountCents,
-    walletDailySpentCents: daily,
-    vendor: body.vendor,
-    category: body.category,
-    hasEvidence,
-  });
-
-  const ws = await prisma.workspace.findUnique({ where: { id: agent.workspaceId } });
-  const spendMode = ws?.spendMode ?? "STRIPE_TEST";
-  outcome = applySpendMode(spendMode, outcome);
-
-  if (body.idempotencyKey) {
-    const existing = await prisma.transaction.findFirst({
-      where: {
-        workspaceId: agent.workspaceId,
-        idempotencyKey: body.idempotencyKey,
+  try {
+    return await submitAgentTransactionRequest(
+      {
+        id: agentRow.id,
+        workspaceId: agentRow.workspaceId,
+        walletId: agentRow.walletId,
+        name: agentRow.name,
       },
-      include: { agent: true, wallet: true },
-    });
-    if (existing) return transactionToJson(existing);
+      body
+    );
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (
+      msg === "Wallet not found" ||
+      msg === "walletId must match agent wallet" ||
+      msg === "Invalid payeeId for this workspace"
+    ) {
+      return reply.status(400).send({ message: msg });
+    }
+    req.log.error(e);
+    return reply.status(500).send({ message: msg });
   }
+});
 
-  const audit = [
-    {
-      id: "1",
-      timestamp: new Date().toISOString(),
-      action: "Transaction requested by agent",
-      actor: agent.name,
-    },
-  ];
-
-  const tx = await prisma.transaction.create({
-    data: {
-      workspaceId: agent.workspaceId,
-      walletId: wallet.id,
-      agentId: agent.id,
-      amountCents,
-      currency: body.currency ?? "USD",
-      railType: body.railType ?? "merchant_card",
-      sourceKind: body.sourceKind ?? "api",
-      status: outcome.status,
-      policyResult: outcome.policyResult,
-      reviewState: outcome.reviewState ?? undefined,
-      recipient: body.recipient,
-      vendor: body.vendor,
-      category: body.category,
-      memo: body.memo,
-      idempotencyKey: body.idempotencyKey,
-      evidenceJson: JSON.stringify(body.evidence ?? []),
-      policyEvalJson: JSON.stringify(outcome.policyEvaluation),
-      auditJson: JSON.stringify(audit),
-    },
-    include: { agent: true, wallet: true },
+/** Dashboard / invoice UI: same payload as agent API, authorized by user JWT. */
+app.post("/api/transactions/request-as-user", async (req, reply) => {
+  const user = await requireUser(req.headers.authorization);
+  const ws = await getWorkspaceForUser(user.id);
+  if (!ws) return reply.status(404).send({ message: "No workspace" });
+  const body = transactionRequestBodySchema.parse(req.body);
+  if (!body.agentId?.trim()) {
+    return reply.status(400).send({ message: "agentId is required" });
+  }
+  const agentRow = await prisma.agent.findFirst({
+    where: { id: body.agentId.trim(), workspaceId: ws.id },
   });
-  return transactionToJson(tx);
+  if (!agentRow) return reply.status(400).send({ message: "Agent not found in workspace" });
+  if (body.walletId && body.walletId !== agentRow.walletId) {
+    return reply.status(400).send({ message: "walletId must match agent's assigned wallet" });
+  }
+  try {
+    return await submitAgentTransactionRequest(
+      {
+        id: agentRow.id,
+        workspaceId: agentRow.workspaceId,
+        walletId: agentRow.walletId,
+        name: agentRow.name,
+      },
+      body
+    );
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (
+      msg === "Wallet not found" ||
+      msg === "walletId must match agent wallet" ||
+      msg === "Invalid payeeId for this workspace"
+    ) {
+      return reply.status(400).send({ message: msg });
+    }
+    req.log.error(e);
+    return reply.status(500).send({ message: msg });
+  }
 });
 
 app.get("/api/transactions", async (req, reply) => {
@@ -770,7 +873,7 @@ app.get("/api/transactions", async (req, reply) => {
   const total = await prisma.transaction.count({ where });
   const rows = await prisma.transaction.findMany({
     where,
-    include: { agent: true, wallet: true },
+    include: { agent: true, wallet: true, payee: true },
     orderBy: { createdAt: "desc" },
     skip: (page - 1) * pageSize,
     take: pageSize,
@@ -791,7 +894,7 @@ app.get("/api/transactions/:id", async (req, reply) => {
   const { id } = req.params as { id: string };
   const tx = await prisma.transaction.findFirst({
     where: { id, workspaceId: ws.id },
-    include: { agent: true, wallet: true },
+    include: { agent: true, wallet: true, payee: true },
   });
   if (!tx) return reply.status(404).send({ message: "Not found" });
   return transactionToJson(tx);
@@ -804,7 +907,7 @@ app.patch("/api/transactions/:id/review", async (req, reply) => {
   const { id } = req.params as { id: string };
   const tx = await prisma.transaction.findFirst({
     where: { id, workspaceId: ws.id },
-    include: { agent: true, wallet: true },
+    include: { agent: true, wallet: true, payee: true },
   });
   if (!tx) return reply.status(404).send({ message: "Not found" });
   const body = z
@@ -819,6 +922,7 @@ app.patch("/api/transactions/:id/review", async (req, reply) => {
   audit.push({
     id: String(audit.length + 1),
     timestamp: new Date().toISOString(),
+    type: "human",
     action: `Human review: ${body.decision}`,
     actor: user.email,
     detail: body.note,
@@ -830,7 +934,7 @@ app.patch("/api/transactions/:id/review", async (req, reply) => {
       reviewState,
       auditJson: JSON.stringify(audit),
     },
-    include: { agent: true, wallet: true },
+    include: { agent: true, wallet: true, payee: true },
   });
   return transactionToJson(updated);
 });
@@ -846,7 +950,7 @@ app.get("/api/review-queue", async (req, reply) => {
   const total = await prisma.transaction.count({ where });
   const rows = await prisma.transaction.findMany({
     where,
-    include: { agent: true, wallet: true },
+    include: { agent: true, wallet: true, payee: true },
     orderBy: { createdAt: "asc" },
     skip: (page - 1) * pageSize,
     take: pageSize,

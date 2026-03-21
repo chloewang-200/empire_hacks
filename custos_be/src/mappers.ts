@@ -10,6 +10,11 @@ export function parseWalletPolicy(json: string): WalletPolicy {
       allowedCategories: p.allowedCategories,
       allowedVendors: p.allowedVendors,
       restrictedVendors: p.restrictedVendors,
+      requireApprovedPayee: Boolean(p.requireApprovedPayee),
+      autoExecutePayout: Boolean(p.autoExecutePayout),
+      allowedPayoutRails: Array.isArray(p.allowedPayoutRails)
+        ? (p.allowedPayoutRails as string[])
+        : undefined,
     };
   } catch {
     return { approvalMode: "review", limits: {} };
@@ -60,7 +65,17 @@ export function agentToJson(
 }
 
 export function transactionToJson(
-  tx: PrismaTransaction & { agent?: { name: string }; wallet?: { name: string } }
+  tx: PrismaTransaction & {
+    agent?: { name: string };
+    wallet?: { name: string };
+    payee?: {
+      id: string;
+      displayName: string;
+      defaultRail: string;
+      paymentInstructions: string | null;
+      stripeConnectAccountId: string | null;
+    } | null;
+  }
 ): Record<string, unknown> {
   let evidence: unknown[] = [];
   try {
@@ -80,6 +95,13 @@ export function transactionToJson(
   } catch {
     auditEvents = [];
   }
+  let context: Record<string, unknown> | undefined;
+  try {
+    if (tx.contextJson) context = JSON.parse(tx.contextJson) as Record<string, unknown>;
+  } catch {
+    context = undefined;
+  }
+
   return {
     id: tx.id,
     requestedAt: tx.createdAt.toISOString(),
@@ -93,6 +115,17 @@ export function transactionToJson(
     amount: tx.amountCents / 100,
     currency: tx.currency,
     memo: tx.memo ?? undefined,
+    purpose: tx.purpose ?? undefined,
+    context,
+    matchedPayee: tx.payee
+      ? {
+          id: tx.payee.id,
+          displayName: tx.payee.displayName,
+          defaultRail: tx.payee.defaultRail,
+          paymentInstructions: tx.payee.paymentInstructions ?? undefined,
+          stripeConnectAccountId: tx.payee.stripeConnectAccountId ?? undefined,
+        }
+      : undefined,
     status: tx.status,
     policyResult: tx.policyResult ?? undefined,
     reviewState: tx.reviewState ?? undefined,
@@ -102,5 +135,10 @@ export function transactionToJson(
     railType: tx.railType,
     sourceKind: tx.sourceKind,
     settledAt: tx.settledAt?.toISOString(),
+    payoutStatus: tx.payoutStatus ?? undefined,
+    payoutProvider: tx.payoutProvider ?? undefined,
+    payoutExternalId: tx.payoutExternalId ?? undefined,
+    payoutError: tx.payoutError ?? undefined,
+    payoutAttemptedAt: tx.payoutAttemptedAt?.toISOString(),
   };
 }

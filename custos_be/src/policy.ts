@@ -14,6 +14,12 @@ export interface PolicyInput {
   category?: string;
   /** If strict / review, require evidence for high amounts */
   hasEvidence: boolean;
+  /** Matched approved payee (explicit or vendor directory) */
+  hasApprovedPayeeMatch: boolean;
+  /** Current wallet prefunded balance (cents) — required when autoExecutePayout is on */
+  walletBalanceCents?: number;
+  /** Normalized payout rail from agent request / payee default */
+  requestedPayoutRail?: string;
 }
 
 export type PolicyOutcome = {
@@ -26,7 +32,17 @@ export type PolicyOutcome = {
 
 export function evaluatePolicy(input: PolicyInput): PolicyOutcome {
   const checks: PolicyEvaluationItem[] = [];
-  const { policy, amountCents, walletDailySpentCents, vendor, category, hasEvidence } = input;
+  const {
+    policy,
+    amountCents,
+    walletDailySpentCents,
+    vendor,
+    category,
+    hasEvidence,
+    hasApprovedPayeeMatch,
+    walletBalanceCents,
+    requestedPayoutRail,
+  } = input;
   const limits = policy.limits ?? {};
   const perTx = limits.perTransaction != null ? Math.round(limits.perTransaction * 100) : null;
   const daily = limits.daily != null ? Math.round(limits.daily * 100) : null;
@@ -83,6 +99,29 @@ export function evaluatePolicy(input: PolicyInput): PolicyOutcome {
   }
   checks.push({ check: "Category allowed", result: "pass" });
 
+  if (policy.requireApprovedPayee) {
+    if (!hasApprovedPayeeMatch) {
+      checks.push({
+        check: "Approved payee",
+        result: "fail",
+        detail: "Vendor did not match an approved payee — add one in Payees or pass payeeId",
+      });
+      return {
+        policyResult: "payee_not_matched",
+        policyEvaluation: checks,
+        status: "pending_review",
+        reviewState: "pending",
+      };
+    }
+    checks.push({ check: "Approved payee", result: "pass", detail: "Matched to payee directory" });
+  } else {
+    checks.push({
+      check: "Approved payee",
+      result: "pass",
+      detail: hasApprovedPayeeMatch ? "Matched (optional)" : "Directory not required",
+    });
+  }
+
   if (overLimit) {
     return {
       policyResult: "over_limit",
@@ -90,6 +129,48 @@ export function evaluatePolicy(input: PolicyInput): PolicyOutcome {
       status: "blocked",
       reviewState: "rejected",
     };
+  }
+
+  if (policy.autoExecutePayout) {
+    const bal = walletBalanceCents ?? 0;
+    if (bal < amountCents) {
+      checks.push({
+        check: "Wallet balance for auto payout",
+        result: "fail",
+        detail: "Prefunded balance is below this amount — add funds or disable auto payout",
+      });
+      return {
+        policyResult: "insufficient_balance",
+        policyEvaluation: checks,
+        status: "blocked",
+        reviewState: "rejected",
+      };
+    }
+    checks.push({ check: "Wallet balance for auto payout", result: "pass" });
+
+    if (policy.allowedPayoutRails?.length && requestedPayoutRail) {
+      const ok = policy.allowedPayoutRails.includes(requestedPayoutRail);
+      if (!ok) {
+        checks.push({
+          check: "Payout rail allow-list",
+          result: "fail",
+          detail: `Rail "${requestedPayoutRail}" is not allowed on this wallet`,
+        });
+        return {
+          policyResult: "payout_rail_not_allowed",
+          policyEvaluation: checks,
+          status: "pending_review",
+          reviewState: "pending",
+        };
+      }
+    }
+    checks.push({
+      check: "Payout rail allow-list",
+      result: "pass",
+      detail: policy.allowedPayoutRails?.length
+        ? `Rail "${requestedPayoutRail ?? "default"}" allowed`
+        : "No rail restriction",
+    });
   }
 
   if (policy.approvalMode === "strict" && amountCents > 0 && !hasEvidence) {
@@ -123,4 +204,17 @@ export function evaluatePolicy(input: PolicyInput): PolicyOutcome {
     status: "approved",
     reviewState: "approved",
   };
+}
+
+export function applySpendMode(spendMode: string, outcome: PolicyOutcome): PolicyOutcome {
+  if (spendMode !== "MANUAL_REAL") return outcome;
+  if (outcome.status === "approved") {
+    return {
+      ...outcome,
+      policyResult: "needs_manual_approval",
+      status: "pending_review",
+      reviewState: "pending",
+    };
+  }
+  return outcome;
 }

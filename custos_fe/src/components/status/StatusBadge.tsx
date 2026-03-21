@@ -74,6 +74,14 @@ export function TransactionStatusBadge({
   );
 }
 
+const policyPass = new Set(["within_policy"]);
+const policyWarn = new Set([
+  "needs_manual_approval",
+  "payee_not_matched",
+  "missing_proof",
+  "payout_rail_not_allowed",
+]);
+
 export function PolicyResultBadge({
   result,
   className,
@@ -81,13 +89,10 @@ export function PolicyResultBadge({
   result: string;
   className?: string;
 }) {
-  const isPass = result === "within_policy";
   const label = result.replace(/_/g, " ");
+  const variant = policyPass.has(result) ? "success" : policyWarn.has(result) ? "warning" : "destructive";
   return (
-    <Badge
-      variant={isPass ? "success" : "destructive"}
-      className={cn("capitalize", className)}
-    >
+    <Badge variant={variant} className={cn("capitalize", className)}>
       {label}
     </Badge>
   );

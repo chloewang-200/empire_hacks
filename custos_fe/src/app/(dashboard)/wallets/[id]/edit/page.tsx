@@ -41,12 +41,17 @@ export default function WalletEditPage() {
           if (!open) router.push(`/wallets/${id}`);
         }}
         walletId={id}
+        existingPolicy={wallet.policy}
         defaultValues={{
           name: wallet.name,
           currency: wallet.currency,
           dailyLimit: wallet.policy?.limits?.daily,
           perTransactionLimit: wallet.policy?.limits?.perTransaction,
+          allowedCategories: wallet.policy?.allowedCategories ?? [],
           approvalMode: wallet.policy?.approvalMode ?? "review",
+          requireApprovedPayee: wallet.policy?.requireApprovedPayee ?? false,
+          autoExecutePayout: wallet.policy?.autoExecutePayout ?? false,
+          allowedPayoutRailsText: wallet.policy?.allowedPayoutRails?.join(", ") ?? "",
           status: wallet.status,
         }}
       />
