@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Upload, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ import { getWallets } from "@/lib/api/wallets";
 import { getAgents } from "@/lib/api/agents";
 
 export default function InvoiceAgentPage() {
+  const searchParams = useSearchParams();
   const [file, setFile] = useState<File | null>(null);
   const [fileId, setFileId] = useState<string | null>(null);
   const [extraction, setExtraction] = useState<InvoiceExtractionResult | null>(null);
@@ -35,6 +37,16 @@ export default function InvoiceAgentPage() {
   });
   const wallets = walletsData?.data ?? [];
   const agents = agentsData?.data ?? [];
+
+  useEffect(() => {
+    const fromUrl = searchParams.get("agentId");
+    if (!fromUrl || agents.length === 0) return;
+    const agent = agents.find((a) => a.id === fromUrl);
+    if (agent) {
+      setAgentId(fromUrl);
+      setWalletId(agent.assignedWalletId);
+    }
+  }, [searchParams, agents]);
 
   const uploadMutation = useMutation({
     mutationFn: (f: File) => uploadInvoice(f),
@@ -96,6 +108,11 @@ export default function InvoiceAgentPage() {
         <p className="mt-1 text-body-sm text-muted-foreground">
           Upload an invoice, extract fields, and submit a payment request for policy evaluation.
         </p>
+        {searchParams.get("agentId") && (
+          <p className="mt-2 text-caption text-muted-foreground">
+            Agent and wallet pre-filled from your link. Requires a Custos session (same as the dashboard).
+          </p>
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">

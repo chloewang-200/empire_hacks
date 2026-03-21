@@ -50,7 +50,6 @@ export function WalletFormDialog({
     defaultValues: {
       name: "",
       currency: "USD",
-      balance: defaultValues?.balance ?? 0,
       dailyLimit: defaultValues?.dailyLimit,
       perTransactionLimit: defaultValues?.perTransactionLimit,
       allowedCategories: defaultValues?.allowedCategories ?? [],
@@ -75,7 +74,6 @@ export function WalletFormDialog({
     const body = {
       name: values.name,
       currency: values.currency,
-      balance: values.balance,
       policy: {
         approvalMode: values.approvalMode,
         limits: {
@@ -112,48 +110,28 @@ export function WalletFormDialog({
                 </FormItem>
               )}
             />
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="currency"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Currency</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="USD">USD</SelectItem>
-                        <SelectItem value="EUR">EUR</SelectItem>
-                        <SelectItem value="GBP">GBP</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-                  <FormField
-                control={form.control}
-                name="balance"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Initial balance</FormLabel>
+            <FormField
+              control={form.control}
+              name="currency"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Currency</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
                     <FormControl>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        {...field}
-                        onChange={(e) => field.onChange(e.target.valueAsNumber || 0)}
-                      />
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
                     </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+                    <SelectContent>
+                      <SelectItem value="USD">USD</SelectItem>
+                      <SelectItem value="EUR">EUR</SelectItem>
+                      <SelectItem value="GBP">GBP</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}

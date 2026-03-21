@@ -30,7 +30,7 @@ export async function PATCH(
     id,
     name: body.name ?? "Placeholder Wallet",
     currency: body.currency ?? "USD",
-    balance: body.balance ?? 0,
+    balance: 0,
     policy: body.policy ?? { approvalMode: "review", limits: {} },
     assignedAgentsCount: body.assignedAgentsCount ?? 0,
     status: body.status ?? "active",

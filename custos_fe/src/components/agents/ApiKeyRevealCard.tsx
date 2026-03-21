@@ -38,11 +38,12 @@ export function ApiKeyRevealCard({ agentId }: ApiKeyRevealCardProps) {
           API credentials
         </CardTitle>
         <p className="text-caption text-muted-foreground">
-          Keys are generated server-side and shown only once. Store securely.
+          Keys are generated on custos_be and shown only once. You must be signed in to the app (Custos JWT in
+          session) so the request can be authorized.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <Button
             variant="outline"
             size="sm"
@@ -52,6 +53,13 @@ export function ApiKeyRevealCard({ agentId }: ApiKeyRevealCardProps) {
             <RefreshCw className={`mr-2 h-4 w-4 ${rotateMutation.isPending ? "animate-spin" : ""}`} />
             {revealedKey ? "Rotate key" : "Generate key"}
           </Button>
+          {rotateMutation.isError && (
+            <p className="text-sm text-destructive">
+              {rotateMutation.error instanceof Error
+                ? rotateMutation.error.message
+                : "Could not generate key"}
+            </p>
+          )}
         </div>
         {rotateMutation.data && (
           <div className="rounded-md border border-border bg-muted/50 p-3 font-mono text-sm">

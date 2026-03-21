@@ -47,6 +47,12 @@ npm run dev
 
 App: `http://localhost:3000`.
 
+### Stripe (wallet top-ups, local dev)
+
+1. Add `STRIPE_SECRET_KEY` (sk_test_…) to **both** `custos_be/.env` and `custos_fe/.env.local`, plus `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` and `STRIPE_WEBHOOK_SECRET` in the frontend env.
+2. Forward webhooks to Next.js: `stripe listen --forward-to localhost:3000/api/webhooks/stripe` and paste the signing secret into `STRIPE_WEBHOOK_SECRET`.
+3. In **Settings**, keep workspace mode **Stripe test** to use card deposits; **Carlos / manual** disables in-app deposits.
+
 ### 3. Invoice extract agent (optional)
 
 ```bash

@@ -1,19 +1,45 @@
 import { NextResponse } from "next/server";
 
+function backendBase(): string | null {
+  const base =
+    process.env.CUSTOS_API_URL?.replace(/\/$/, "") ??
+    process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
+  return base || null;
+}
+
+/** Proxies multipart upload to custos_be (stores file and returns fileId). */
 export async function POST(request: Request) {
-  try {
-    const formData = await request.formData();
-    const file = formData.get("file") as File | null;
-    if (!file) {
-      return NextResponse.json({ message: "No file" }, { status: 400 });
-    }
-    // TODO: Store file in blob/store and return ID
-    const fileId = `inv_${Date.now()}_${file.name.replace(/\s/g, "_")}`;
-    return NextResponse.json({ fileId, url: undefined });
-  } catch (e) {
+  const base = backendBase();
+  if (!base) {
     return NextResponse.json(
-      { message: e instanceof Error ? e.message : "Upload failed" },
+      { message: "Set CUSTOS_API_URL or NEXT_PUBLIC_API_URL to your custos_be URL" },
       { status: 500 }
     );
   }
+  const auth = request.headers.get("authorization");
+  const formData = await request.formData();
+  let r: Response;
+  try {
+    r = await fetch(`${base}/api/invoice/upload`, {
+      method: "POST",
+      headers: auth ? { Authorization: auth } : {},
+      body: formData,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Cannot reach custos_be";
+    return NextResponse.json({ message }, { status: 503 });
+  }
+  const text = await r.text();
+  if (!r.ok) {
+    try {
+      const j = JSON.parse(text) as { message?: string };
+      return NextResponse.json({ message: j.message ?? r.statusText }, { status: r.status });
+    } catch {
+      return NextResponse.json({ message: text || r.statusText }, { status: r.status });
+    }
+  }
+  return new NextResponse(text, {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
 }

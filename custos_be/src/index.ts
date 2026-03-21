@@ -15,6 +15,7 @@ import {
 } from "./auth.js";
 import { agentToJson, parseWalletPolicy, transactionToJson, walletToJson } from "./mappers.js";
 import { evaluatePolicy, type PolicyOutcome } from "./policy.js";
+import { stripe, stripeEnabled } from "./stripe.js";
 import { z } from "zod";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -53,6 +54,93 @@ async function getWorkspaceForUser(userId: string) {
 }
 
 app.get("/health", async () => ({ ok: true }));
+
+app.get("/api/workspace", async (req, reply) => {
+  const user = await requireUser(req.headers.authorization);
+  const ws = await getWorkspaceForUser(user.id);
+  if (!ws) return reply.status(404).send({ message: "No workspace" });
+  return {
+    id: ws.id,
+    name: ws.name,
+    spendMode: ws.spendMode,
+    fundingPreference: ws.fundingPreference,
+  };
+});
+
+app.patch("/api/workspace", async (req, reply) => {
+  const user = await requireUser(req.headers.authorization);
+  const ws = await getWorkspaceForUser(user.id);
+  if (!ws) return reply.status(404).send({ message: "No workspace" });
+  const body = z
+    .object({
+      spendMode: z.enum(["STRIPE_TEST", "MANUAL_REAL"]).optional(),
+      fundingPreference: z.enum(["BALANCE_FIRST", "CARD_AT_SPEND", "BOTH"]).optional(),
+    })
+    .parse(req.body);
+  if (body.spendMode === undefined && body.fundingPreference === undefined) {
+    return reply.status(400).send({ message: "No fields to update" });
+  }
+  const updated = await prisma.workspace.update({
+    where: { id: ws.id },
+    data: {
+      ...(body.spendMode !== undefined ? { spendMode: body.spendMode } : {}),
+      ...(body.fundingPreference !== undefined ? { fundingPreference: body.fundingPreference } : {}),
+    },
+  });
+  return {
+    id: updated.id,
+    name: updated.name,
+    spendMode: updated.spendMode,
+    fundingPreference: updated.fundingPreference,
+  };
+});
+
+/** Called from Next.js Stripe webhook after signature verification. */
+app.post("/api/internal/stripe-credit", async (req, reply) => {
+  const secret = req.headers["x-internal-secret"] as string | undefined;
+  try {
+    assertInternalSecret(secret);
+  } catch {
+    return reply.status(401).send({ message: "Unauthorized" });
+  }
+  const body = z
+    .object({
+      paymentIntentId: z.string(),
+      walletId: z.string(),
+      workspaceId: z.string(),
+      amountCents: z.number().int().positive(),
+      currency: z.string().optional(),
+    })
+    .parse(req.body);
+  const existing = await prisma.stripePaymentLedger.findUnique({
+    where: { paymentIntentId: body.paymentIntentId },
+  });
+  if (existing) {
+    return { ok: true, duplicate: true };
+  }
+  const wallet = await prisma.wallet.findFirst({
+    where: { id: body.walletId, workspaceId: body.workspaceId },
+  });
+  if (!wallet) {
+    return reply.status(404).send({ message: "Wallet not found" });
+  }
+  await prisma.$transaction([
+    prisma.stripePaymentLedger.create({
+      data: {
+        paymentIntentId: body.paymentIntentId,
+        walletId: wallet.id,
+        workspaceId: body.workspaceId,
+        amountCents: body.amountCents,
+        currency: (body.currency ?? "usd").toLowerCase(),
+      },
+    }),
+    prisma.wallet.update({
+      where: { id: wallet.id },
+      data: { balanceCents: { increment: body.amountCents } },
+    }),
+  ]);
+  return { ok: true };
+});
 
 /** Next.js server-to-server: upsert user + issue Custos JWT */
 app.post("/api/internal/bootstrap", async (req, reply) => {
@@ -319,7 +407,6 @@ app.post("/api/wallets", async (req, reply) => {
     .object({
       name: z.string(),
       currency: z.string().optional(),
-      balance: z.number().optional(),
       policy: z
         .object({
           approvalMode: z.string(),
@@ -334,13 +421,12 @@ app.post("/api/wallets", async (req, reply) => {
   const policyJson = JSON.stringify(
     body.policy ?? { approvalMode: "review", limits: {} }
   );
-  const balanceCents = Math.round((body.balance ?? 0) * 100);
   const w = await prisma.wallet.create({
     data: {
       workspaceId: ws.id,
       name: body.name,
       currency: body.currency ?? "USD",
-      balanceCents,
+      balanceCents: 0,
       policyJson,
       status: body.status ?? "active",
     },
@@ -373,7 +459,6 @@ app.patch("/api/wallets/:id", async (req, reply) => {
     .object({
       name: z.string().optional(),
       currency: z.string().optional(),
-      balance: z.number().optional(),
       policy: z
         .object({
           approvalMode: z.string(),
@@ -386,14 +471,11 @@ app.patch("/api/wallets/:id", async (req, reply) => {
     .parse(req.body);
   const policyJson =
     body.policy != null ? JSON.stringify(body.policy) : undefined;
-  const balanceCents =
-    body.balance != null ? Math.round(body.balance * 100) : undefined;
   const updated = await prisma.wallet.update({
     where: { id },
     data: {
       name: body.name,
       currency: body.currency,
-      balanceCents,
       policyJson,
       status: body.status,
     },
@@ -413,6 +495,41 @@ app.delete("/api/wallets/:id", async (req, reply) => {
   return { ok: true };
 });
 
+app.post("/api/wallets/:id/fund/intent", async (req, reply) => {
+  const user = await requireUser(req.headers.authorization);
+  const ws = await getWorkspaceForUser(user.id);
+  if (!ws) return reply.status(404).send({ message: "No workspace" });
+  if (!stripeEnabled() || !stripe) {
+    return reply
+      .status(503)
+      .send({ message: "Stripe is not configured (set STRIPE_SECRET_KEY on custos_be)." });
+  }
+  const { id: walletId } = req.params as { id: string };
+  const wallet = await prisma.wallet.findFirst({
+    where: { id: walletId, workspaceId: ws.id },
+  });
+  if (!wallet) return reply.status(404).send({ message: "Wallet not found" });
+  const body = z.object({ amount: z.number().positive() }).parse(req.body);
+  const amountCents = Math.round(body.amount * 100);
+  if (amountCents < 50) {
+    return reply.status(400).send({ message: "Minimum amount is $0.50" });
+  }
+  const pi = await stripe.paymentIntents.create({
+    amount: amountCents,
+    currency: wallet.currency.toLowerCase(),
+    automatic_payment_methods: { enabled: true },
+    metadata: {
+      walletId: wallet.id,
+      workspaceId: ws.id,
+      userId: user.id,
+    },
+  });
+  return {
+    clientSecret: pi.client_secret,
+    paymentIntentId: pi.id,
+  };
+});
+
 app.post("/api/wallets/:id/fund", async (req, reply) => {
   const user = await requireUser(req.headers.authorization);
   const ws = await getWorkspaceForUser(user.id);
@@ -420,8 +537,56 @@ app.post("/api/wallets/:id/fund", async (req, reply) => {
   const { id } = req.params as { id: string };
   const w = await prisma.wallet.findFirst({ where: { id, workspaceId: ws.id } });
   if (!w) return reply.status(404).send({ message: "Not found" });
+
+  const allowManual = process.env.CUSTOS_ALLOW_MANUAL_FUND === "true";
+  if (!allowManual) {
+    return reply.status(400).send({
+      message:
+        "Use the in-app card flow to add funds (Stripe test). For local dev-only manual credits, set CUSTOS_ALLOW_MANUAL_FUND=true on custos_be.",
+    });
+  }
+
   const body = z.object({ amount: z.number(), reference: z.string().optional() }).parse(req.body);
   const add = Math.round(body.amount * 100);
+  const updated = await prisma.wallet.update({
+    where: { id },
+    data: { balanceCents: { increment: add } },
+    include: { agents: true },
+  });
+  return walletToJson(updated);
+});
+
+/** Manual treasury credit — secret code from env (see CUSTOS_CARLOS_SECRET_CODE). Independent of spend policy mode. */
+app.post("/api/wallets/:id/fund/carlos", async (req, reply) => {
+  const user = await requireUser(req.headers.authorization);
+  const ws = await getWorkspaceForUser(user.id);
+  if (!ws) return reply.status(404).send({ message: "No workspace" });
+  const { id } = req.params as { id: string };
+  const w = await prisma.wallet.findFirst({ where: { id, workspaceId: ws.id } });
+  if (!w) return reply.status(404).send({ message: "Not found" });
+
+  const body = z
+    .object({
+      amount: z.number().positive(),
+      secretCode: z.string().min(1).optional(),
+      adminCode: z.string().min(1).optional(),
+    })
+    .parse(req.body);
+  const code = body.secretCode ?? body.adminCode;
+  if (!code) {
+    return reply.status(400).send({ message: "secretCode is required" });
+  }
+  const expected =
+    process.env.CUSTOS_CARLOS_SECRET_CODE ??
+    process.env.CUSTOS_CARLOS_ADMIN_CODE ??
+    "Admin123";
+  if (code !== expected) {
+    return reply.status(403).send({ message: "Invalid secret code." });
+  }
+  const add = Math.round(body.amount * 100);
+  if (add < 50) {
+    return reply.status(400).send({ message: "Minimum amount is $0.50" });
+  }
   const updated = await prisma.wallet.update({
     where: { id },
     data: { balanceCents: { increment: add } },

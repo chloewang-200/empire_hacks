@@ -37,7 +37,7 @@ export async function POST(request: Request) {
       id: `wal_${Date.now()}`,
       name: body.name ?? "New Wallet",
       currency: body.currency ?? "USD",
-      balance: body.balance ?? body.policy?.limits?.daily ?? 0,
+      balance: 0,
       policy: body.policy ?? {
         approvalMode: "review",
         limits: {},

@@ -46,8 +46,26 @@ export async function deleteAgent(id: string): Promise<void> {
   await apiDelete(`/api/agents/${id}`);
 }
 
+/**
+ * Same-origin `/api/agents/.../api-key` proxies to custos_be (avoids CORS and works with one API URL).
+ */
 export async function rotateAgentApiKey(id: string): Promise<ApiKeyResponse> {
-  return apiPost<ApiKeyResponse>(`/api/agents/${id}/api-key`);
+  const token =
+    typeof window !== "undefined" ? sessionStorage.getItem("custos_jwt") : null;
+  const res = await fetch(`/api/agents/${id}/api-key`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: "{}",
+    credentials: "include",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error((err as { message?: string }).message ?? res.statusText);
+  }
+  return res.json() as Promise<ApiKeyResponse>;
 }
 
 export async function getAgentTransactions(agentId: string, params?: { page?: number }): Promise<PaginatedResponse<import("@/lib/types").Transaction>> {

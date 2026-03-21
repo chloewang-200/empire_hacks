@@ -21,8 +21,10 @@ model Workspace {
   id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name      String   @default("Default")
-  spendMode String   @default("STRIPE_TEST")
+  name               String   @default("Default")
+  spendMode          String   @default("STRIPE_TEST")
+  /** BALANCE_FIRST | CARD_AT_SPEND | BOTH — UX default for how you prefer to cover spend; all funding rails stay available. */
+  fundingPreference String   @default("BOTH")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   wallets   Wallet[]
@@ -110,4 +112,15 @@ model UploadedFile {
   path      String
   mimeType  String?
   createdAt DateTime @default(now())
+}
+
+/** Idempotent record of Stripe-funded wallet top-ups (webhook). */
+model StripePaymentLedger {
+  id              String   @id @default(cuid())
+  paymentIntentId String   @unique
+  walletId        String
+  workspaceId     String
+  amountCents     Int
+  currency        String   @default("usd")
+  createdAt       DateTime @default(now())
 }

@@ -21,7 +21,6 @@ export async function getWallet(id: string): Promise<Wallet> {
 export interface CreateWalletBody {
   name: string;
   currency: string;
-  balance?: number;
   policy: {
     approvalMode: string;
     limits: { daily?: number; perTransaction?: number };
@@ -52,6 +51,22 @@ export interface FundWalletBody {
 
 export async function fundWallet(walletId: string, body: FundWalletBody): Promise<Wallet> {
   return apiPost<Wallet>(`/api/wallets/${walletId}/fund`, body);
+}
+
+/** Stripe PaymentIntent for wallet top-up (STRIPE_TEST workspace mode only). */
+export async function createWalletFundIntent(
+  walletId: string,
+  body: { amount: number }
+): Promise<{ clientSecret: string | null; paymentIntentId: string }> {
+  return apiPost(`/api/wallets/${walletId}/fund/intent`, body);
+}
+
+/** Carlos / manual workspace: credit wallet after secret code (server-side env). */
+export async function fundCarlosManual(
+  walletId: string,
+  body: { amount: number; secretCode: string }
+): Promise<Wallet> {
+  return apiPost<Wallet>(`/api/wallets/${walletId}/fund/carlos`, body);
 }
 
 export async function getWalletTransactions(walletId: string, params?: { page?: number }): Promise<PaginatedResponse<import("@/lib/types").Transaction>> {

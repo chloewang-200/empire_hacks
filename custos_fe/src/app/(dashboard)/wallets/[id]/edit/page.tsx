@@ -44,7 +44,6 @@ export default function WalletEditPage() {
         defaultValues={{
           name: wallet.name,
           currency: wallet.currency,
-          balance: wallet.balance,
           dailyLimit: wallet.policy?.limits?.daily,
           perTransactionLimit: wallet.policy?.limits?.perTransaction,
           approvalMode: wallet.policy?.approvalMode ?? "review",

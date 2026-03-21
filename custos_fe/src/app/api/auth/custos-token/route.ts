@@ -20,18 +20,32 @@ export async function POST() {
     );
   }
   const secret = process.env.CUSTOS_INTERNAL_SECRET ?? "internal-dev-secret";
-  const r = await fetch(`${base}/api/internal/bootstrap`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Internal-Secret": secret,
-    },
-    body: JSON.stringify({
-      email: session.user.email,
-      name: session.user.name,
-      image: session.user.image,
-    }),
-  });
+  let r: Response;
+  try {
+    r = await fetch(`${base}/api/internal/bootstrap`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Secret": secret,
+      },
+      body: JSON.stringify({
+        email: session.user.email,
+        name: session.user.name,
+        image: session.user.image,
+      }),
+    });
+  } catch (err) {
+    const cause =
+      err instanceof Error && err.cause instanceof Error ? err.cause.message : null;
+    return NextResponse.json(
+      {
+        message:
+          `Cannot reach custos_be at ${base}. Start the API server (e.g. npm run dev in custos_be).`,
+        ...(cause ? { cause } : {}),
+      },
+      { status: 503 }
+    );
+  }
   if (!r.ok) {
     const msg = await r.text();
     return NextResponse.json({ message: msg || r.statusText }, { status: 502 });

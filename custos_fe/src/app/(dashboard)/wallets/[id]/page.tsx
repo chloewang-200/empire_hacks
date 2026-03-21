@@ -1,14 +1,17 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { useParams } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getWorkspace } from "@/lib/api/workspace";
 import { getWallet } from "@/lib/api/wallets";
+import { FundingPreferenceHint } from "@/components/wallets/FundingPreferenceHint";
+import { refreshWalletBalances } from "@/lib/refreshWalletBalances";
 import { WalletStatusBadge } from "@/components/status/StatusBadge";
 import { AddFundsModal } from "@/components/wallets/AddFundsModal";
 import { formatCurrency } from "@/lib/utils";
@@ -16,6 +19,8 @@ import { Progress } from "@/components/ui/progress";
 
 export default function WalletDetailPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
   const id = params.id as string;
   const [fundOpen, setFundOpen] = useState(false);
   const { data: wallet, isLoading } = useQuery({
@@ -23,10 +28,20 @@ export default function WalletDetailPage() {
     queryFn: () => getWallet(id),
   });
 
+  const { data: workspace } = useQuery({
+    queryKey: ["workspace"],
+    queryFn: getWorkspace,
+  });
+
   useEffect(() => {
     const fund = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("fund");
     if (fund === "1") setFundOpen(true);
   }, []);
+
+  useEffect(() => {
+    if (searchParams.get("funded") !== "1") return;
+    void refreshWalletBalances(queryClient, id);
+  }, [searchParams, id, queryClient]);
 
   if (isLoading || !wallet) {
     return (
@@ -61,10 +76,15 @@ export default function WalletDetailPage() {
         </Button>
       </div>
 
+      {workspace && (
+        <FundingPreferenceHint preference={workspace.fundingPreference ?? "BOTH"} />
+      )}
+
       <div className="grid gap-6 md:grid-cols-3">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Available balance</CardTitle>
+            <CardTitle className="text-base">Balance</CardTitle>
+            <CardDescription>From deposits (Add funds) minus settled spend.</CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-semibold tabular-nums">
