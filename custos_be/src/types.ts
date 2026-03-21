@@ -32,9 +32,11 @@ export type PolicyResult =
   | "payee_not_matched"
   | "insufficient_balance"
   | "payout_rail_not_allowed"
+  | "connect_payment_method_required"
   | "agent_inactive"
   | "agent_max_transaction_exceeded"
   | "agent_monthly_allowance_exceeded"
+  | "agent_daily_limit_exceeded"
   | "agent_vendor_denied"
   | "agent_vendor_not_allowlisted"
   | "agent_payment_method_blocked";

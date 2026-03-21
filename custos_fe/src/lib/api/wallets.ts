@@ -21,6 +21,7 @@ export async function getWallet(id: string): Promise<Wallet> {
 export interface CreateWalletBody {
   name: string;
   currency: string;
+  fundingModel?: "prefund" | "connect_destination";
   policy: {
     approvalMode: string;
     limits: { daily?: number; perTransaction?: number };
@@ -62,6 +63,27 @@ export async function createWalletFundIntent(
   body: { amount: number }
 ): Promise<{ clientSecret: string | null; paymentIntentId: string }> {
   return apiPost(`/api/wallets/${walletId}/fund/intent`, body);
+}
+
+export async function ensureWalletStripeCustomer(
+  walletId: string
+): Promise<{ stripeCustomerId: string }> {
+  return apiPost(`/api/wallets/${walletId}/stripe/customer`, {});
+}
+
+export async function createWalletSetupIntent(walletId: string): Promise<{
+  clientSecret: string | null;
+  setupIntentId: string;
+  stripeCustomerId: string;
+}> {
+  return apiPost(`/api/wallets/${walletId}/stripe/setup-intent`, {});
+}
+
+export async function setWalletDefaultPaymentMethod(
+  walletId: string,
+  body: { paymentMethodId: string }
+): Promise<Wallet> {
+  return apiPost(`/api/wallets/${walletId}/stripe/default-payment-method`, body);
 }
 
 /** Carlos / manual workspace: credit wallet after secret code (server-side env). */

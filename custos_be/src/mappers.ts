@@ -32,6 +32,9 @@ export function walletToJson(
     name: w.name,
     currency: w.currency,
     balance: w.balanceCents / 100,
+    fundingModel: w.fundingModel ?? "prefund",
+    stripeCustomerId: w.stripeCustomerId ?? undefined,
+    hasDefaultPaymentMethod: Boolean(w.stripeDefaultPaymentMethodId),
     policy: parseWalletPolicy(w.policyJson),
     assignedAgentsCount: count,
     status: w.status,
@@ -78,10 +81,15 @@ export function agentToJson(
     monthlyAllowance: centsToDollars(a.monthlyAllowanceCents),
     approvalThreshold: centsToDollars(a.approvalThresholdCents),
     maxTransactionAmount: centsToDollars(a.maxTransactionAmountCents),
+    dailySpendLimit: centsToDollars(a.dailySpendLimitCents),
     currency: a.budgetCurrency,
+    requireApprovedPayee: a.requireApprovedPayee,
     vendorAllowlist: lists.vendorAllowlist,
     vendorDenylist: lists.vendorDenylist,
     allowedPaymentMethods: lists.allowedPaymentMethods,
+    allowedPayoutRails: lists.allowedPayoutRails,
+    allowedCategories: lists.allowedCategories,
+    restrictedVendors: lists.restrictedVendors,
     settings: lists.settings,
     metadata: lists.metadata,
     agentId: a.id,
@@ -131,6 +139,29 @@ export function transactionToJson(
     context = undefined;
   }
 
+  let riskFlags: string[] = [];
+  try {
+    const rf = JSON.parse(tx.riskFlagsJson ?? "[]") as unknown;
+    riskFlags = Array.isArray(rf) ? rf.map(String) : [];
+  } catch {
+    riskFlags = [];
+  }
+  let citedRules: unknown[] = [];
+  try {
+    const cr = JSON.parse(tx.citedRulesJson ?? "[]") as unknown;
+    citedRules = Array.isArray(cr) ? cr : [];
+  } catch {
+    citedRules = [];
+  }
+  let agentDecision: Record<string, unknown> | undefined;
+  try {
+    if (tx.agentDecisionJson) {
+      agentDecision = JSON.parse(tx.agentDecisionJson) as Record<string, unknown>;
+    }
+  } catch {
+    agentDecision = undefined;
+  }
+
   return {
     id: tx.id,
     requestedAt: tx.createdAt.toISOString(),
@@ -146,6 +177,10 @@ export function transactionToJson(
     memo: tx.memo ?? undefined,
     purpose: tx.purpose ?? undefined,
     context,
+    riskScore: tx.riskScore ?? undefined,
+    riskFlags: riskFlags.length ? riskFlags : undefined,
+    citedRules: citedRules.length ? citedRules : undefined,
+    agentDecision,
     matchedPayee: tx.payee
       ? {
           id: tx.payee.id,

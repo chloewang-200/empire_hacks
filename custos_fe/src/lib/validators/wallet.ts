@@ -3,6 +3,7 @@ import { z } from "zod";
 export const walletFormSchema = z.object({
   name: z.string().min(1, "Name is required").max(120),
   currency: z.string().length(3, "Use 3-letter currency code"),
+  fundingModel: z.enum(["prefund", "connect_destination"]),
   dailyLimit: z.number().min(0).optional(),
   perTransactionLimit: z.number().min(0).optional(),
   allowedCategories: z.array(z.string()),

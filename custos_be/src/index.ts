@@ -17,9 +17,16 @@ import {
   dollarsToCents,
   validateAgentConfiguration,
 } from "./agentGovernance.js";
-import { agentToJson, transactionToJson, walletToJson } from "./mappers.js";
+import {
+  agentToJson,
+  parseWalletPolicy,
+  transactionToJson,
+  walletToJson,
+} from "./mappers.js";
 import { submitAgentTransactionRequest } from "./transactionFlow.js";
+import { executeAutomatedPayout } from "./payoutExecution.js";
 import { stripe, stripeEnabled } from "./stripe.js";
+import { ensureStripeCustomerForWallet } from "./stripeWallet.js";
 import { z } from "zod";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -227,6 +234,11 @@ const agentCreateBodySchema = z.object({
   vendorAllowlist: z.array(z.string()).optional(),
   vendorDenylist: z.array(z.string()).optional(),
   allowedPaymentMethods: z.array(z.string()).optional(),
+  dailySpendLimit: optionalMoney,
+  requireApprovedPayee: z.boolean().optional(),
+  allowedPayoutRails: z.array(z.string()).optional(),
+  allowedCategories: z.array(z.string()).optional(),
+  restrictedVendors: z.array(z.string()).optional(),
   settings: z.record(z.unknown()).optional(),
   metadata: z.record(z.unknown()).optional(),
 });
@@ -247,6 +259,11 @@ const agentPatchBodySchema = z.object({
   vendorAllowlist: z.array(z.string()).optional().nullable(),
   vendorDenylist: z.array(z.string()).optional().nullable(),
   allowedPaymentMethods: z.array(z.string()).optional().nullable(),
+  dailySpendLimit: optionalMoneyNull,
+  requireApprovedPayee: z.boolean().optional().nullable(),
+  allowedPayoutRails: z.array(z.string()).optional().nullable(),
+  allowedCategories: z.array(z.string()).optional().nullable(),
+  restrictedVendors: z.array(z.string()).optional().nullable(),
   settings: z.record(z.unknown()).optional().nullable(),
   metadata: z.record(z.unknown()).optional().nullable(),
 });
@@ -345,6 +362,12 @@ app.post("/api/agents", async (req, reply) => {
       vendorAllowlistJson: JSON.stringify(body.vendorAllowlist ?? []),
       vendorDenylistJson: JSON.stringify(body.vendorDenylist ?? []),
       allowedPaymentMethodsJson: JSON.stringify(body.allowedPaymentMethods ?? []),
+      dailySpendLimitCents:
+        body.dailySpendLimit !== undefined ? dollarsToCents(body.dailySpendLimit) : null,
+      requireApprovedPayee: body.requireApprovedPayee ?? false,
+      allowedPayoutRailsJson: JSON.stringify(body.allowedPayoutRails ?? []),
+      allowedCategoriesJson: JSON.stringify(body.allowedCategories ?? []),
+      restrictedVendorsJson: JSON.stringify(body.restrictedVendors ?? []),
       settingsJson: JSON.stringify(body.settings ?? {}),
       metadataJson: JSON.stringify(body.metadata ?? {}),
       createdByUserId: user.id,
@@ -429,6 +452,30 @@ app.patch("/api/agents/:id", async (req, reply) => {
         body.allowedPaymentMethods === undefined
           ? undefined
           : JSON.stringify(body.allowedPaymentMethods ?? []),
+      dailySpendLimitCents:
+        body.dailySpendLimit === undefined
+          ? undefined
+          : body.dailySpendLimit === null
+            ? null
+            : dollarsToCents(body.dailySpendLimit),
+      requireApprovedPayee:
+        body.requireApprovedPayee === undefined
+          ? undefined
+          : body.requireApprovedPayee === null
+            ? false
+            : body.requireApprovedPayee,
+      allowedPayoutRailsJson:
+        body.allowedPayoutRails === undefined
+          ? undefined
+          : JSON.stringify(body.allowedPayoutRails ?? []),
+      allowedCategoriesJson:
+        body.allowedCategories === undefined
+          ? undefined
+          : JSON.stringify(body.allowedCategories ?? []),
+      restrictedVendorsJson:
+        body.restrictedVendors === undefined
+          ? undefined
+          : JSON.stringify(body.restrictedVendors ?? []),
       settingsJson: body.settings === undefined ? undefined : JSON.stringify(body.settings ?? {}),
       metadataJson: body.metadata === undefined ? undefined : JSON.stringify(body.metadata ?? {}),
     },
@@ -603,6 +650,7 @@ app.post("/api/wallets", async (req, reply) => {
         })
         .optional(),
       status: z.string().optional(),
+      fundingModel: z.enum(["prefund", "connect_destination"]).optional(),
     })
     .parse(req.body);
   const policyJson = JSON.stringify(
@@ -616,6 +664,7 @@ app.post("/api/wallets", async (req, reply) => {
       balanceCents: 0,
       policyJson,
       status: body.status ?? "active",
+      fundingModel: body.fundingModel ?? "prefund",
     },
     include: { agents: true },
   });
@@ -657,6 +706,7 @@ app.patch("/api/wallets/:id", async (req, reply) => {
         })
         .optional(),
       status: z.string().optional(),
+      fundingModel: z.enum(["prefund", "connect_destination"]).optional(),
     })
     .parse(req.body);
   const policyJson =
@@ -668,6 +718,7 @@ app.patch("/api/wallets/:id", async (req, reply) => {
       currency: body.currency,
       policyJson,
       status: body.status,
+      fundingModel: body.fundingModel,
     },
     include: { agents: true },
   });
@@ -718,6 +769,112 @@ app.post("/api/wallets/:id/fund/intent", async (req, reply) => {
     clientSecret: pi.client_secret,
     paymentIntentId: pi.id,
   };
+});
+
+/** Ensure Stripe Customer on wallet (for saving cards / Connect destination charges). */
+app.post("/api/wallets/:id/stripe/customer", async (req, reply) => {
+  const user = await requireUser(req.headers.authorization);
+  const ws = await getWorkspaceForUser(user.id);
+  if (!ws) return reply.status(404).send({ message: "No workspace" });
+  if (!stripeEnabled() || !stripe) {
+    return reply
+      .status(503)
+      .send({ message: "Stripe is not configured (set STRIPE_SECRET_KEY on custos_be)." });
+  }
+  const { id: walletId } = req.params as { id: string };
+  const wallet = await prisma.wallet.findFirst({
+    where: { id: walletId, workspaceId: ws.id },
+  });
+  if (!wallet) return reply.status(404).send({ message: "Wallet not found" });
+  try {
+    const customerId = await ensureStripeCustomerForWallet({
+      walletId: wallet.id,
+      workspaceId: ws.id,
+      userEmail: user.email,
+    });
+    return { stripeCustomerId: customerId };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return reply.status(400).send({ message: msg });
+  }
+});
+
+/** SetupIntent to collect a card for off-session Connect destination charges. */
+app.post("/api/wallets/:id/stripe/setup-intent", async (req, reply) => {
+  const user = await requireUser(req.headers.authorization);
+  const ws = await getWorkspaceForUser(user.id);
+  if (!ws) return reply.status(404).send({ message: "No workspace" });
+  if (!stripeEnabled() || !stripe) {
+    return reply
+      .status(503)
+      .send({ message: "Stripe is not configured (set STRIPE_SECRET_KEY on custos_be)." });
+  }
+  const { id: walletId } = req.params as { id: string };
+  const wallet = await prisma.wallet.findFirst({
+    where: { id: walletId, workspaceId: ws.id },
+  });
+  if (!wallet) return reply.status(404).send({ message: "Wallet not found" });
+  try {
+    const customerId = await ensureStripeCustomerForWallet({
+      walletId: wallet.id,
+      workspaceId: ws.id,
+      userEmail: user.email,
+    });
+    const si = await stripe.setupIntents.create({
+      customer: customerId,
+      payment_method_types: ["card"],
+      usage: "off_session",
+      metadata: { walletId: wallet.id, workspaceId: ws.id },
+    });
+    return {
+      clientSecret: si.client_secret,
+      setupIntentId: si.id,
+      stripeCustomerId: customerId,
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return reply.status(400).send({ message: msg });
+  }
+});
+
+/** Attach PaymentMethod and set as wallet default for destination charges. */
+app.post("/api/wallets/:id/stripe/default-payment-method", async (req, reply) => {
+  const user = await requireUser(req.headers.authorization);
+  const ws = await getWorkspaceForUser(user.id);
+  if (!ws) return reply.status(404).send({ message: "No workspace" });
+  if (!stripeEnabled() || !stripe) {
+    return reply
+      .status(503)
+      .send({ message: "Stripe is not configured (set STRIPE_SECRET_KEY on custos_be)." });
+  }
+  const { id: walletId } = req.params as { id: string };
+  const wallet = await prisma.wallet.findFirst({
+    where: { id: walletId, workspaceId: ws.id },
+  });
+  if (!wallet) return reply.status(404).send({ message: "Wallet not found" });
+  const body = z.object({ paymentMethodId: z.string().min(1) }).parse(req.body);
+  if (!wallet.stripeCustomerId) {
+    return reply.status(400).send({
+      message: "Wallet has no Stripe customer yet — POST /api/wallets/:id/stripe/customer or setup-intent first.",
+    });
+  }
+  try {
+    await stripe.paymentMethods.attach(body.paymentMethodId, {
+      customer: wallet.stripeCustomerId,
+    });
+    await stripe.customers.update(wallet.stripeCustomerId, {
+      invoice_settings: { default_payment_method: body.paymentMethodId },
+    });
+    const updated = await prisma.wallet.update({
+      where: { id: wallet.id },
+      data: { stripeDefaultPaymentMethodId: body.paymentMethodId },
+      include: { agents: true },
+    });
+    return walletToJson(updated);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return reply.status(400).send({ message: msg });
+  }
 });
 
 app.post("/api/wallets/:id/fund", async (req, reply) => {
@@ -813,6 +970,19 @@ app.get("/api/wallets/:walletId/transactions", async (req, reply) => {
   };
 });
 
+const citedRuleSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  source: z.string().optional(),
+  excerpt: z.string().optional(),
+});
+
+const agentDecisionSchema = z.object({
+  summary: z.string(),
+  reasoning: z.string().optional(),
+  modelConfidence: z.number().min(0).max(1).optional(),
+});
+
 const transactionRequestBodySchema = z.object({
   agentId: z.string().optional(),
   walletId: z.string().optional(),
@@ -831,6 +1001,11 @@ const transactionRequestBodySchema = z.object({
   idempotencyKey: z.string().optional(),
   stripeConnectAccountId: z.string().optional(),
   venmoHandle: z.string().optional(),
+  /** 0–100 — high scores can force human review (see CUSTOS_RISK_SCORE_REVIEW_THRESHOLD). */
+  riskScore: z.number().min(0).max(100).optional(),
+  riskFlags: z.array(z.string()).optional(),
+  citedRules: z.array(citedRuleSchema).optional(),
+  agentDecision: agentDecisionSchema.optional(),
 });
 
 function payeeToJson(p: {
@@ -1122,7 +1297,34 @@ app.patch("/api/transactions/:id/review", async (req, reply) => {
     },
     include: { agent: true, wallet: true, payee: true },
   });
-  return transactionToJson(updated);
+
+  let finalRow = updated;
+  if (body.decision === "approve") {
+    const policy = parseWalletPolicy(updated.wallet.policyJson);
+    const ps = updated.payoutStatus;
+    const shouldPayout =
+      policy.autoExecutePayout && ps !== "succeeded" && ps !== "processing";
+    if (shouldPayout) {
+      await executeAutomatedPayout({
+        transactionId: updated.id,
+        walletId: updated.walletId,
+        amountCents: updated.amountCents,
+        currency: updated.currency,
+        railType: updated.railType,
+        stripeConnectAccountId: updated.payee?.stripeConnectAccountId ?? null,
+        venmoHandle: updated.recipient?.trim() || null,
+        fundingModel: updated.wallet.fundingModel ?? "prefund",
+        stripeCustomerId: updated.wallet.stripeCustomerId,
+        stripeDefaultPaymentMethodId: updated.wallet.stripeDefaultPaymentMethodId,
+      });
+      finalRow = (await prisma.transaction.findFirst({
+        where: { id },
+        include: { agent: true, wallet: true, payee: true },
+      }))!;
+    }
+  }
+
+  return transactionToJson(finalRow);
 });
 
 app.get("/api/review-queue", async (req, reply) => {

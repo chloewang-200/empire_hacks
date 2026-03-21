@@ -49,6 +49,18 @@ export default function AgentEditPage() {
           role: agent.role,
           capabilities: agent.capabilities?.map((c) => c.id) ?? [],
           status: agent.status,
+          monthlyAllowance: agent.monthlyAllowance ?? undefined,
+          dailySpendLimit: agent.dailySpendLimit ?? undefined,
+          approvalThreshold: agent.approvalThreshold ?? undefined,
+          maxTransactionAmount: agent.maxTransactionAmount ?? undefined,
+          requireApprovedPayee: agent.requireApprovedPayee ?? false,
+          vendorAllowlist: agent.vendorAllowlist ?? [],
+          vendorDenylist: agent.vendorDenylist ?? [],
+          restrictedVendors: agent.restrictedVendors ?? [],
+          allowedCategories: agent.allowedCategories ?? [],
+          allowedRails: Array.from(
+            new Set([...(agent.allowedPayoutRails ?? []), ...(agent.allowedPaymentMethods ?? [])])
+          ),
         }}
       />
     </div>

@@ -64,6 +64,10 @@ model Wallet {
   balanceCents Int           @default(0)
   policyJson   String
   status       String        @default("active")
+  /** prefund = ledger + Stripe transfers from platform balance; connect_destination = charge saved PM per payout with transfer_data.destination */
+  fundingModel String        @default("prefund")
+  stripeCustomerId             String?
+  stripeDefaultPaymentMethodId String?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   agents       Agent[]
@@ -95,6 +99,16 @@ model Agent {
   vendorAllowlistJson       String @default("[]")
   vendorDenylistJson        String @default("[]")
   allowedPaymentMethodsJson String @default("[]")
+  /** Max spend per calendar day (UTC start) for this agent; null = no agent daily cap */
+  dailySpendLimitCents      Int?
+  /** When true, spend must match an approved payee (same semantics as wallet policy flag). */
+  requireApprovedPayee      Boolean @default(false)
+  /** JSON array of rail ids — if non-empty, request rail must be listed (e.g. stripe_connect). */
+  allowedPayoutRailsJson    String @default("[]")
+  /** JSON array — if non-empty, category must match one (when category is sent). */
+  allowedCategoriesJson     String @default("[]")
+  /** JSON array — vendor substring hits block (merged with wallet restricted list in policy). */
+  restrictedVendorsJson     String @default("[]")
   settingsJson              String @default("{}")
   metadataJson              String @default("{}")
   createdByUserId           String?
@@ -141,6 +155,13 @@ model Transaction {
   contextJson    String?
   idempotencyKey String?
   evidenceJson   String?
+  /** 0–100 scale from agent; high values trigger review when above env threshold */
+  riskScore      Int?
+  riskFlagsJson  String?
+  /** Cited policy / rule objects: [{ id, title, source?, excerpt? }] */
+  citedRulesJson String?
+  /** Agent decision trace: { summary, reasoning?, modelConfidence? 0–1 } */
+  agentDecisionJson String?
   policyEvalJson String?
   auditJson      String?
   payeeId        String?

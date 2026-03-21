@@ -1,9 +1,77 @@
 import { prisma } from "./prisma.js";
 import { parseWalletPolicy, transactionToJson } from "./mappers.js";
 import { evaluatePolicy, applySpendMode, type PolicyOutcome } from "./policy.js";
+import type { WalletPolicy } from "./types.js";
 import { matchPayeeByVendor } from "./payeeMatcher.js";
 import { executeAutomatedPayout } from "./payoutExecution.js";
-import { agentMonthSpentCents, evaluateAgentSpendGates } from "./agentGovernance.js";
+import {
+  agentMonthSpentCents,
+  evaluateAgentSpendGates,
+  parseAgentSettings,
+} from "./agentGovernance.js";
+import { applyTrustLayerToOutcome } from "./trustSignals.js";
+
+function mergeAllowedPayoutRails(
+  agentRails: string[],
+  walletRails: string[] | undefined
+): string[] | undefined {
+  const w = walletRails?.filter(Boolean) ?? [];
+  const a = agentRails.filter(Boolean);
+  if (a.length && w.length) {
+    const inter = a.filter((r) => w.includes(r));
+    return inter.length ? inter : [];
+  }
+  if (a.length) return a;
+  if (w.length) return w;
+  return undefined;
+}
+
+function mergeRestrictedVendors(
+  agentList: string[],
+  walletList: string[] | undefined
+): string[] | undefined {
+  const u = [...new Set([...agentList, ...(walletList ?? [])])].filter(Boolean);
+  return u.length ? u : undefined;
+}
+
+function mergeAllowedCategories(
+  agentList: string[],
+  walletList: string[] | undefined
+): string[] | undefined {
+  const w = walletList?.filter(Boolean) ?? [];
+  const a = agentList.filter(Boolean);
+  if (a.length && w.length) {
+    const wl = new Set(w.map((x) => x.toLowerCase()));
+    return a.filter((x) => wl.has(x.toLowerCase()));
+  }
+  if (a.length) return a;
+  if (w.length) return w;
+  return undefined;
+}
+
+function mergeWalletPolicyWithAgent(
+  walletPolicy: WalletPolicy,
+  agent: { requireApprovedPayee: boolean } & ReturnType<typeof parseAgentSettings>
+): WalletPolicy {
+  const lists = agent;
+  return {
+    ...walletPolicy,
+    requireApprovedPayee:
+      Boolean(walletPolicy.requireApprovedPayee) || Boolean(agent.requireApprovedPayee),
+    allowedPayoutRails: mergeAllowedPayoutRails(
+      lists.allowedPayoutRails,
+      walletPolicy.allowedPayoutRails
+    ),
+    restrictedVendors: mergeRestrictedVendors(
+      lists.restrictedVendors,
+      walletPolicy.restrictedVendors
+    ),
+    allowedCategories: mergeAllowedCategories(
+      lists.allowedCategories,
+      walletPolicy.allowedCategories
+    ),
+  };
+}
 
 export type TransactionRequestInput = {
   agentId?: string;
@@ -25,6 +93,10 @@ export type TransactionRequestInput = {
   stripeConnectAccountId?: string;
   /** Optional Venmo @handle for audit when rail is venmo */
   venmoHandle?: string;
+  riskScore?: number;
+  riskFlags?: string[];
+  citedRules?: { id: string; title: string; source?: string; excerpt?: string }[];
+  agentDecision?: { summary: string; reasoning?: string; modelConfidence?: number };
 };
 
 async function walletDailySpentCents(walletId: string): Promise<number> {
@@ -33,6 +105,20 @@ async function walletDailySpentCents(walletId: string): Promise<number> {
   const agg = await prisma.transaction.aggregate({
     where: {
       walletId,
+      createdAt: { gte: start },
+      status: { in: ["approved", "pending_review", "settled"] },
+    },
+    _sum: { amountCents: true },
+  });
+  return agg._sum.amountCents ?? 0;
+}
+
+async function agentDaySpentCents(agentId: string): Promise<number> {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const agg = await prisma.transaction.aggregate({
+    where: {
+      agentId,
       createdAt: { gte: start },
       status: { in: ["approved", "pending_review", "settled"] },
     },
@@ -77,6 +163,10 @@ export async function submitAgentTransactionRequest(
 
   const hasApprovedPayeeMatch = resolvedPayee != null;
   const policy = parseWalletPolicy(wallet.policyJson);
+  const fundingModel = wallet.fundingModel?.trim() || "prefund";
+  const hasConnectChargePm = Boolean(
+    wallet.stripeCustomerId && wallet.stripeDefaultPaymentMethodId
+  );
   const amountCents = Math.round(body.amount * 100);
   const daily = await walletDailySpentCents(wallet.id);
   const hasEvidence = (body.evidence?.length ?? 0) > 0;
@@ -89,22 +179,32 @@ export async function submitAgentTransactionRequest(
   if (!fullAgent) throw new Error("Agent not found");
 
   const monthSpent = await agentMonthSpentCents(fullAgent.id);
+  const daySpent = await agentDaySpentCents(fullAgent.id);
   const agentGate = evaluateAgentSpendGates(
     fullAgent,
     {
       amountCents,
       vendor: body.vendor,
+      category: body.category,
       railType: requestedPayoutRail,
+      hasApprovedPayeeMatch,
     },
-    monthSpent
+    monthSpent,
+    daySpent
   );
 
+  const agentLists = parseAgentSettings(fullAgent);
+  const mergedPolicy = mergeWalletPolicyWithAgent(policy, {
+    requireApprovedPayee: fullAgent.requireApprovedPayee,
+    ...agentLists,
+  });
+
   let outcome: PolicyOutcome;
-  if (agentGate.kind === "block") {
+  if (agentGate.kind === "block" || agentGate.kind === "review") {
     outcome = agentGate.outcome;
   } else {
     outcome = evaluatePolicy({
-      policy,
+      policy: mergedPolicy,
       amountCents,
       walletDailySpentCents: daily,
       vendor: body.vendor,
@@ -113,6 +213,9 @@ export async function submitAgentTransactionRequest(
       hasApprovedPayeeMatch,
       walletBalanceCents: wallet.balanceCents,
       requestedPayoutRail,
+      walletFundingModel: fundingModel,
+      hasConnectChargePaymentMethod:
+        fundingModel === "connect_destination" ? hasConnectChargePm : undefined,
     });
     outcome = {
       ...outcome,
@@ -135,6 +238,13 @@ export async function submitAgentTransactionRequest(
   const ws = await prisma.workspace.findUnique({ where: { id: agent.workspaceId } });
   const spendMode = ws?.spendMode ?? "STRIPE_TEST";
   outcome = applySpendMode(spendMode, outcome);
+  outcome = applyTrustLayerToOutcome(outcome, {
+    riskScore: body.riskScore,
+    riskFlags: body.riskFlags,
+    agentDecision: body.agentDecision,
+    citedRules: body.citedRules,
+    evidence: body.evidence,
+  });
 
   if (body.idempotencyKey) {
     const existing = await prisma.transaction.findFirst({
@@ -188,6 +298,38 @@ export async function submitAgentTransactionRequest(
       detail: `${body.evidence!.length} item(s) (e.g. invoice file IDs, URLs)`,
     });
   }
+  if (body.agentDecision?.summary?.trim()) {
+    audit.push({
+      id: String(seq++),
+      timestamp: ts,
+      type: "agent_decision",
+      action: "Agent decision (CoT / rationale)",
+      actor: agent.name,
+      detail: JSON.stringify({
+        summary: body.agentDecision.summary,
+        reasoning: body.agentDecision.reasoning,
+        modelConfidence: body.agentDecision.modelConfidence,
+      }),
+    });
+  }
+  if (body.citedRules?.length) {
+    audit.push({
+      id: String(seq++),
+      timestamp: ts,
+      type: "citations",
+      action: "Cited rules / sources",
+      detail: JSON.stringify(body.citedRules),
+    });
+  }
+  if (body.riskScore != null || (body.riskFlags?.length ?? 0) > 0) {
+    audit.push({
+      id: String(seq++),
+      timestamp: ts,
+      type: "risk",
+      action: "Risk score & flags",
+      detail: JSON.stringify({ riskScore: body.riskScore ?? null, riskFlags: body.riskFlags ?? [] }),
+    });
+  }
   audit.push({
     id: String(seq++),
     timestamp: ts,
@@ -224,6 +366,10 @@ export async function submitAgentTransactionRequest(
       payeeId: resolvedPayee?.id,
       idempotencyKey: body.idempotencyKey,
       evidenceJson: JSON.stringify(body.evidence ?? []),
+      riskScore: body.riskScore ?? undefined,
+      riskFlagsJson: JSON.stringify(body.riskFlags ?? []),
+      citedRulesJson: JSON.stringify(body.citedRules ?? []),
+      agentDecisionJson: body.agentDecision ? JSON.stringify(body.agentDecision) : undefined,
       policyEvalJson: JSON.stringify(outcome.policyEvaluation),
       auditJson: JSON.stringify(audit),
     },
@@ -231,7 +377,7 @@ export async function submitAgentTransactionRequest(
   });
 
   let finalRow = tx;
-  if (outcome.status === "approved" && policy.autoExecutePayout) {
+  if (outcome.status === "approved" && mergedPolicy.autoExecutePayout) {
     await executeAutomatedPayout({
       transactionId: tx.id,
       walletId: wallet.id,
@@ -241,6 +387,9 @@ export async function submitAgentTransactionRequest(
       stripeConnectAccountId:
         body.stripeConnectAccountId?.trim() || resolvedPayee?.stripeConnectAccountId || null,
       venmoHandle: body.venmoHandle?.trim() || null,
+      fundingModel,
+      stripeCustomerId: wallet.stripeCustomerId,
+      stripeDefaultPaymentMethodId: wallet.stripeDefaultPaymentMethodId,
     });
     finalRow = (await prisma.transaction.findFirst({
       where: { id: tx.id },

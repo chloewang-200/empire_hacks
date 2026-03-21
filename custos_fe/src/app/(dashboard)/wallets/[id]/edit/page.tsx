@@ -45,6 +45,7 @@ export default function WalletEditPage() {
         defaultValues={{
           name: wallet.name,
           currency: wallet.currency,
+          fundingModel: wallet.fundingModel ?? "prefund",
           dailyLimit: wallet.policy?.limits?.daily,
           perTransactionLimit: wallet.policy?.limits?.perTransaction,
           allowedCategories: wallet.policy?.allowedCategories ?? [],

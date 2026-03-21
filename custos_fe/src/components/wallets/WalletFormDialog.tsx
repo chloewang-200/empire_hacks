@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -45,6 +46,7 @@ export function WalletFormDialog({
   open,
   onOpenChange,
   walletId,
+  existingPolicy,
   defaultValues,
 }: WalletFormDialogProps) {
   const queryClient = useQueryClient();
@@ -53,6 +55,7 @@ export function WalletFormDialog({
     defaultValues: {
       name: "",
       currency: "USD",
+      fundingModel: defaultValues?.fundingModel ?? "prefund",
       dailyLimit: defaultValues?.dailyLimit,
       perTransactionLimit: defaultValues?.perTransactionLimit,
       allowedCategories: defaultValues?.allowedCategories ?? [],
@@ -64,6 +67,24 @@ export function WalletFormDialog({
       ...defaultValues,
     },
   });
+
+  useEffect(() => {
+    if (!open || walletId) return;
+    form.reset({
+      name: "",
+      currency: "USD",
+      fundingModel: "prefund",
+      dailyLimit: undefined,
+      perTransactionLimit: undefined,
+      allowedCategories: [],
+      approvalMode: "review",
+      requireApprovedPayee: false,
+      autoExecutePayout: false,
+      allowedPayoutRailsText: "",
+      status: "active",
+      notes: undefined,
+    });
+  }, [open, walletId, form]);
 
   const saveMutation = useMutation({
     mutationFn: (body: Parameters<typeof createWallet>[0]) =>
@@ -77,9 +98,16 @@ export function WalletFormDialog({
   });
 
   function onSubmit(values: WalletFormValues) {
+    const rails = values.allowedPayoutRailsText
+      ? values.allowedPayoutRailsText
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : undefined;
     const body = {
       name: values.name,
       currency: values.currency,
+      fundingModel: values.fundingModel,
       policy: {
         approvalMode: values.approvalMode,
         limits: {
@@ -87,8 +115,11 @@ export function WalletFormDialog({
           perTransaction: values.perTransactionLimit,
         },
         allowedCategories: values.allowedCategories,
+        allowedVendors: existingPolicy?.allowedVendors,
+        restrictedVendors: existingPolicy?.restrictedVendors,
         requireApprovedPayee: values.requireApprovedPayee === true,
-        status: values.status,
+        autoExecutePayout: values.autoExecutePayout === true,
+        ...(rails && rails.length > 0 ? { allowedPayoutRails: rails } : {}),
       },
       status: values.status,
       notes: values.notes,
@@ -135,6 +166,35 @@ export function WalletFormDialog({
                       <SelectItem value="GBP">GBP</SelectItem>
                     </SelectContent>
                   </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="fundingModel"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>How payouts are funded</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose funding model" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="prefund">
+                        Prefund — top up balance; payouts use platform balance (Stripe transfer)
+                      </SelectItem>
+                      <SelectItem value="connect_destination">
+                        Card on file — charge saved card per payout (Stripe Connect destination)
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-caption text-muted-foreground">
+                    Connect destination needs a saved card on this wallet and payees with{" "}
+                    <code className="text-xs">acct_…</code>. You won&apos;t use &quot;Add funds&quot; for that model.
+                  </p>
                   <FormMessage />
                 </FormItem>
               )}
@@ -215,12 +275,12 @@ export function WalletFormDialog({
                     />
                   </FormControl>
                   <div className="space-y-1 leading-none">
-                    <FormLabel className="text-sm font-medium">Require approved payee</FormLabel>
+                    <FormLabel className="text-sm font-medium">Require approved payee (wallet-wide)</FormLabel>
                     <p className="text-caption text-muted-foreground">
-                      Spend requests must match an entry in{" "}
-                      <span className="font-medium text-foreground">Payees</span> (by vendor string or explicit{" "}
-                      <code className="text-xs">payeeId</code>
-                      ), or they are sent to review.
+                      When enabled here or on an agent, requests must match{" "}
+                      <span className="font-medium text-foreground">Payees</span> or go to review. Prefer configuring
+                      this per agent under <span className="font-medium text-foreground">Edit agent → Spend rules</span>
+                      .
                     </p>
                   </div>
                 </FormItem>
@@ -242,9 +302,9 @@ export function WalletFormDialog({
                   <div className="space-y-1 leading-none">
                     <FormLabel className="text-sm font-medium">Auto-execute payout</FormLabel>
                     <p className="text-caption text-muted-foreground">
-                      When policy approves and balance covers the amount, attempt a real transfer (Stripe Connect to{" "}
-                      <code className="text-xs">acct_…</code>
-                      ). Venmo and other rails may be marked for manual follow-up.
+                      When policy approves, attempt payout: prefund wallets need balance + Stripe transfer; Connect
+                      destination wallets charge the saved card to the payee&apos;s{" "}
+                      <code className="text-xs">acct_…</code>. Venmo uses PayPal when configured.
                     </p>
                   </div>
                 </FormItem>

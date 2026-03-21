@@ -32,6 +32,17 @@ export interface CreateAgentBody {
   role: string;
   capabilities: string[];
   status?: string;
+  monthlyAllowance?: number | null;
+  dailySpendLimit?: number | null;
+  approvalThreshold?: number | null;
+  maxTransactionAmount?: number | null;
+  requireApprovedPayee?: boolean;
+  vendorAllowlist?: string[];
+  vendorDenylist?: string[];
+  allowedPaymentMethods?: string[];
+  allowedPayoutRails?: string[];
+  allowedCategories?: string[];
+  restrictedVendors?: string[];
 }
 
 export async function createAgent(body: CreateAgentBody): Promise<Agent> {

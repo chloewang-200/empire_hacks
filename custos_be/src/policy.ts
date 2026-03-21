@@ -20,6 +20,10 @@ export interface PolicyInput {
   walletBalanceCents?: number;
   /** Normalized payout rail from agent request / payee default */
   requestedPayoutRail?: string;
+  /** Wallet row: prefund vs connect_destination (charge saved PM, no prefunded ledger for payout) */
+  walletFundingModel?: string;
+  /** When connect_destination, customer must have a default PM saved for auto payout */
+  hasConnectChargePaymentMethod?: boolean;
 }
 
 export type PolicyOutcome = {
@@ -42,6 +46,8 @@ export function evaluatePolicy(input: PolicyInput): PolicyOutcome {
     hasApprovedPayeeMatch,
     walletBalanceCents,
     requestedPayoutRail,
+    walletFundingModel,
+    hasConnectChargePaymentMethod,
   } = input;
   const limits = policy.limits ?? {};
   const perTx = limits.perTransaction != null ? Math.round(limits.perTransaction * 100) : null;
@@ -85,7 +91,21 @@ export function evaluatePolicy(input: PolicyInput): PolicyOutcome {
   }
   checks.push({ check: "Vendor restrictions", result: "pass" });
 
-  if (policy.allowedCategories?.length && category) {
+  if (policy.allowedCategories !== undefined && policy.allowedCategories.length === 0) {
+    if (category?.trim()) {
+      checks.push({
+        check: "Category allowed",
+        result: "fail",
+        detail: "Agent and wallet category rules allow no categories for this request",
+      });
+      return {
+        policyResult: "category_not_allowed",
+        policyEvaluation: checks,
+        status: "blocked",
+        reviewState: "rejected",
+      };
+    }
+  } else if (policy.allowedCategories?.length && category) {
     const ok = policy.allowedCategories.some((c) => c.toLowerCase() === category.toLowerCase());
     if (!ok) {
       checks.push({ check: "Category allowed", result: "fail", detail: category });
@@ -132,21 +152,57 @@ export function evaluatePolicy(input: PolicyInput): PolicyOutcome {
   }
 
   if (policy.autoExecutePayout) {
-    const bal = walletBalanceCents ?? 0;
-    if (bal < amountCents) {
+    const connectCharge = walletFundingModel === "connect_destination";
+    if (connectCharge) {
+      if (!hasConnectChargePaymentMethod) {
+        checks.push({
+          check: "Saved payment method for Connect payout",
+          result: "fail",
+          detail: "Add a card via wallet Stripe setup (SetupIntent) and set default payment method",
+        });
+        return {
+          policyResult: "connect_payment_method_required",
+          policyEvaluation: checks,
+          status: "blocked",
+          reviewState: "rejected",
+        };
+      }
       checks.push({
-        check: "Wallet balance for auto payout",
+        check: "Saved payment method for Connect payout",
+        result: "pass",
+        detail: "Card on file — amount will be charged when payout runs (destination charge)",
+      });
+    } else {
+      const bal = walletBalanceCents ?? 0;
+      if (bal < amountCents) {
+        checks.push({
+          check: "Wallet balance for auto payout",
+          result: "fail",
+          detail: "Prefunded balance is below this amount — add funds or disable auto payout",
+        });
+        return {
+          policyResult: "insufficient_balance",
+          policyEvaluation: checks,
+          status: "blocked",
+          reviewState: "rejected",
+        };
+      }
+      checks.push({ check: "Wallet balance for auto payout", result: "pass" });
+    }
+
+    if (policy.allowedPayoutRails !== undefined && policy.allowedPayoutRails.length === 0) {
+      checks.push({
+        check: "Payout rail allow-list",
         result: "fail",
-        detail: "Prefunded balance is below this amount — add funds or disable auto payout",
+        detail: "Merged agent + wallet rules allow no payout rails",
       });
       return {
-        policyResult: "insufficient_balance",
+        policyResult: "payout_rail_not_allowed",
         policyEvaluation: checks,
-        status: "blocked",
-        reviewState: "rejected",
+        status: "pending_review",
+        reviewState: "pending",
       };
     }
-    checks.push({ check: "Wallet balance for auto payout", result: "pass" });
 
     if (policy.allowedPayoutRails?.length && requestedPayoutRail) {
       const ok = policy.allowedPayoutRails.includes(requestedPayoutRail);

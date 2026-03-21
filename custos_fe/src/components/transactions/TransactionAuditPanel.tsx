@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { PolicyResultBadge } from "@/components/status/StatusBadge";
 import { TransactionStatusBadge } from "@/components/status/StatusBadge";
 import { formatDateTime } from "@/lib/utils";
-import type { Transaction } from "@/lib/types";
+import type { CitedRule, Transaction } from "@/lib/types";
 
 const auditTypeLabel: Record<string, string> = {
   request: "Request",
@@ -16,6 +16,9 @@ const auditTypeLabel: Record<string, string> = {
   evidence: "Evidence",
   policy: "Policy",
   human: "Human",
+  agent_decision: "Agent decision",
+  citations: "Citations",
+  risk: "Risk",
 };
 
 function ContextJson({ value }: { value: Record<string, unknown> }) {
@@ -60,6 +63,81 @@ export function TransactionAuditPanel({ tx }: { tx: Transaction }) {
           </Badge>
         )}
       </div>
+
+      {(tx.riskScore != null ||
+        (tx.riskFlags && tx.riskFlags.length > 0) ||
+        (tx.citedRules && tx.citedRules.length > 0) ||
+        tx.agentDecision) && (
+        <Card className="border-primary/20 bg-primary/[0.03]">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Shield className="h-4 w-4" />
+              Trust &amp; audit payload
+            </CardTitle>
+            <CardDescription>
+              Agent-supplied signals for human review (risk, citations, decision trace).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-body-sm">
+            {tx.riskScore != null && (
+              <p>
+                <span className="text-muted-foreground">Risk score:</span>{" "}
+                <span className="font-semibold tabular-nums">{tx.riskScore}</span>
+                <span className="text-caption text-muted-foreground"> / 100</span>
+              </p>
+            )}
+            {tx.riskFlags && tx.riskFlags.length > 0 && (
+              <div>
+                <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Risk flags</p>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {tx.riskFlags.map((f) => (
+                    <Badge key={f} variant="secondary">
+                      {f}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            {tx.agentDecision && (
+              <div className="rounded-md border border-border bg-background/80 p-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Agent decision</p>
+                <p className="mt-1 font-medium">{tx.agentDecision.summary}</p>
+                {tx.agentDecision.reasoning && (
+                  <p className="mt-2 text-caption text-muted-foreground whitespace-pre-wrap">
+                    {tx.agentDecision.reasoning}
+                  </p>
+                )}
+                {tx.agentDecision.modelConfidence != null && (
+                  <p className="mt-2 text-caption">
+                    <span className="text-muted-foreground">Model confidence:</span>{" "}
+                    {Math.round(tx.agentDecision.modelConfidence * 100)}%
+                  </p>
+                )}
+              </div>
+            )}
+            {tx.citedRules && tx.citedRules.length > 0 && (
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Cited rules</p>
+                <ul className="mt-2 space-y-2">
+                  {(tx.citedRules as CitedRule[]).map((r) => (
+                    <li key={r.id} className="rounded-md border border-border p-2 text-body-sm">
+                      <p className="font-medium">
+                        <span className="font-mono text-xs text-muted-foreground">{r.id}</span> — {r.title}
+                      </p>
+                      {r.source && (
+                        <p className="text-caption text-muted-foreground mt-1">Source: {r.source}</p>
+                      )}
+                      {r.excerpt && (
+                        <p className="mt-1 text-caption italic border-l-2 border-primary/30 pl-2">{r.excerpt}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

@@ -58,10 +58,19 @@ export interface Agent {
   monthlyAllowance?: number | null;
   approvalThreshold?: number | null;
   maxTransactionAmount?: number | null;
+  /** Agent-level daily spend cap (major units); enforced before wallet daily limits */
+  dailySpendLimit?: number | null;
   currency?: string;
+  requireApprovedPayee?: boolean;
   vendorAllowlist?: string[];
   vendorDenylist?: string[];
   allowedPaymentMethods?: string[];
+  /** If set, this agent may only use these payout rails (e.g. stripe_connect, merchant_card) */
+  allowedPayoutRails?: string[];
+  /** If set, category on the request must match one of these when provided */
+  allowedCategories?: string[];
+  /** Vendor substring hits are blocked for this agent (merged with wallet restricted list) */
+  restrictedVendors?: string[];
   settings?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
   createdByUserId?: string;
@@ -89,11 +98,17 @@ export interface WalletPolicy {
   allowedPayoutRails?: string[];
 }
 
+export type WalletFundingModel = "prefund" | "connect_destination";
+
 export interface Wallet {
   id: string;
   name: string;
   currency: string;
   balance: number;
+  /** prefund = ledger + Stripe transfers; connect_destination = charge saved card per payout */
+  fundingModel?: WalletFundingModel;
+  stripeCustomerId?: string;
+  hasDefaultPaymentMethod?: boolean;
   policy: WalletPolicy;
   assignedAgentsCount: number;
   status: WalletStatus;
@@ -119,9 +134,11 @@ export type PolicyResult =
   | "payee_not_matched"
   | "insufficient_balance"
   | "payout_rail_not_allowed"
+  | "connect_payment_method_required"
   | "agent_inactive"
   | "agent_max_transaction_exceeded"
   | "agent_monthly_allowance_exceeded"
+  | "agent_daily_limit_exceeded"
   | "agent_vendor_denied"
   | "agent_vendor_not_allowlisted"
   | "agent_payment_method_blocked";
@@ -157,6 +174,21 @@ export interface MatchedPayeeSummary {
   stripeConnectAccountId?: string;
 }
 
+/** Rule or policy citation supplied by the agent for audit (The Auditor track). */
+export interface CitedRule {
+  id: string;
+  title: string;
+  source?: string;
+  excerpt?: string;
+}
+
+/** Agent-declared decision trace (summary + optional CoT + model confidence). */
+export interface AgentDecisionRecord {
+  summary: string;
+  reasoning?: string;
+  modelConfidence?: number;
+}
+
 export interface Transaction {
   id: string;
   requestedAt: string;
@@ -174,6 +206,11 @@ export interface Transaction {
   purpose?: string;
   /** Structured metadata from the agent (audit) */
   context?: Record<string, unknown>;
+  /** 0–100 risk score from agent; high values can force human review */
+  riskScore?: number;
+  riskFlags?: string[];
+  citedRules?: CitedRule[];
+  agentDecision?: AgentDecisionRecord;
   matchedPayee?: MatchedPayeeSummary;
   status: TransactionStatus;
   policyResult?: PolicyResult;
