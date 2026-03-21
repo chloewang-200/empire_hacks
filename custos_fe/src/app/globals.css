@@ -1,0 +1,222 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800;900&display=swap');
+
+@font-face {
+  font-family: 'Plaid Sans';
+  src: local('Plaid Sans'), url('https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hiA.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Enterprise Design System - aligned with agent-guard-gate marketing site */
+
+@layer base {
+  :root {
+    /* Core palette - Plaid-inspired clean fintech */
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    /* Brand: greenish-yellow / lime (matches marketing #eefa79) */
+    --primary: 66 92% 73%;
+    --primary-foreground: 222 47% 11%;
+    --secondary: 215 25% 94%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 214 32% 96%;
+    --muted-foreground: 215 18% 45%;
+    --accent: 221 60% 95%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 221 83% 53%;
+    --radius: 0.625rem;
+
+    /* Extended slate */
+    --slate-50: 210 40% 98%;
+    --slate-100: 214 32% 95%;
+    --slate-200: 214 27% 90%;
+    --slate-300: 213 22% 82%;
+    --slate-400: 215 16% 62%;
+    --slate-500: 215 16% 47%;
+    --slate-600: 215 19% 35%;
+    --slate-700: 217 24% 27%;
+    --slate-800: 217 27% 20%;
+    --slate-900: 222 47% 11%;
+    --slate-950: 229 84% 5%;
+
+    /* Blue spectrum */
+    --blue-50: 214 100% 97%;
+    --blue-100: 214 95% 93%;
+    --blue-200: 213 94% 88%;
+    --blue-300: 213 97% 81%;
+    --blue-400: 214 95% 68%;
+    --blue-500: 217 91% 60%;
+    --blue-600: 217 91% 50%;
+    --blue-700: 218 92% 42%;
+    --blue-800: 218 89% 35%;
+    --blue-900: 219 85% 29%;
+
+    /* Indigo spectrum */
+    --indigo-50: 221 70% 96%;
+    --indigo-100: 221 65% 92%;
+    --indigo-200: 221 60% 85%;
+    --indigo-300: 221 60% 72%;
+    --indigo-400: 221 70% 55%;
+    --indigo-500: 221 83% 53%;
+    --indigo-600: 221 90% 45%;
+    --indigo-700: 221 92% 38%;
+    --indigo-800: 221 88% 32%;
+    --indigo-900: 221 78% 26%;
+
+    /* Success / governance */
+    --success-50: 173 80% 96%;
+    --success-500: 173 80% 36%;
+    --success-600: 173 90% 28%;
+    --emerald-50: 173 80% 96%;
+    --emerald-500: 173 80% 36%;
+    --emerald-600: 173 90% 28%;
+
+    /* Warning amber */
+    --amber-50: 48 100% 96%;
+    --amber-500: 38 92% 50%;
+
+    /* Gradients - lime/green-yellow brand (matches marketing) */
+    --gradient-hero: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(214 32% 99%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(214 32% 99%) 100%);
+    --gradient-text: linear-gradient(135deg, hsl(222 47% 11%) 0%, hsl(66 92% 45%) 100%);
+    --gradient-cta: linear-gradient(135deg, hsl(66 92% 73%) 0%, hsl(66 92% 65%) 100%);
+    --gradient-glow: radial-gradient(ellipse 80% 50% at 50% -20%, hsl(66 92% 73% / 0.15) 0%, transparent 70%);
+    --gradient-grid: linear-gradient(hsl(214 32% 91% / 0.3) 1px, transparent 1px), linear-gradient(90deg, hsl(214 32% 91% / 0.3) 1px, transparent 1px);
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.05);
+    --shadow-md: 0 4px 6px -1px hsl(0 0% 0% / 0.07), 0 2px 4px -2px hsl(0 0% 0% / 0.05);
+    --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.08), 0 4px 6px -4px hsl(0 0% 0% / 0.05);
+    --shadow-xl: 0 20px 25px -5px hsl(0 0% 0% / 0.08), 0 8px 10px -6px hsl(0 0% 0% / 0.04);
+    --shadow-glow: 0 0 40px -10px hsl(66 92% 53% / 0.25);
+    --shadow-card: 0 1px 3px hsl(0 0% 0% / 0.05), 0 1px 2px hsl(0 0% 0% / 0.1);
+
+    /* Sidebar */
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 66 92% 45%;
+  }
+
+  .dark {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 98%;
+    --primary: 66 92% 73%;
+    --primary-foreground: 222 47% 11%;
+    --secondary: 217 24% 27%;
+    --muted: 217 24% 27%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 24% 27%;
+    --border: 217 24% 22%;
+    --input: 217 24% 22%;
+    --ring: 217 91% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Plaid Sans', 'Inter', system-ui, -apple-system, sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+  * {
+    font-family: 'Plaid Sans', 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  code, pre {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: var(--gradient-text);
+  }
+  .bg-hero-gradient {
+    background: var(--gradient-hero);
+  }
+  .bg-hero-glow {
+    background: var(--gradient-glow);
+  }
+  .bg-grid {
+    background-image: var(--gradient-grid);
+    background-size: 40px 40px;
+  }
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+  .shadow-glow {
+    box-shadow: var(--shadow-glow);
+  }
+  .glass-card {
+    @apply border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900;
+    box-shadow: var(--shadow-card);
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+  .animate-fade-up {
+    animation: fade-up 0.6s ease-out forwards;
+  }
+  .animate-fade-in {
+    animation: fade-in 0.5s ease-out forwards;
+  }
+  .animate-scale-in {
+    animation: scale-in 0.4s ease-out forwards;
+  }
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes scale-in {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  .stagger-1 { animation-delay: 0.1s; }
+  .stagger-2 { animation-delay: 0.2s; }
+  .stagger-3 { animation-delay: 0.3s; }
+  .stagger-4 { animation-delay: 0.4s; }
+  .stagger-5 { animation-delay: 0.5s; }
+}

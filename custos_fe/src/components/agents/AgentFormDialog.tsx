@@ -1,0 +1,439 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Plug, LayoutTemplate, ArrowLeft, ChevronRight } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { createAgent, updateAgent } from "@/lib/api/agents";
+import { agentFormSchema, type AgentFormValues } from "@/lib/validators/agent";
+import { AGENT_ROLES, AGENT_STARTER_TEMPLATES } from "@/lib/constants";
+import { useQuery } from "@tanstack/react-query";
+import { getWallets } from "@/lib/api/wallets";
+import { cn } from "@/lib/utils";
+
+type FlowStep = "choose" | "form";
+type CreationPath = "custom" | "template" | null;
+
+interface AgentFormDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  defaultValues?: Partial<AgentFormValues>;
+  agentId?: string;
+}
+
+export function AgentFormDialog({
+  open,
+  onOpenChange,
+  defaultValues,
+  agentId,
+}: AgentFormDialogProps) {
+  const isEdit = Boolean(agentId);
+  const queryClient = useQueryClient();
+  const [step, setStep] = useState<FlowStep>(isEdit ? "form" : "choose");
+  const [creationPath, setCreationPath] = useState<CreationPath>(null);
+
+  const { data: walletsData } = useQuery({
+    queryKey: ["wallets", { page: 1, pageSize: 100 }],
+    queryFn: () => getWallets({ page: 1, pageSize: 100 }),
+  });
+  const wallets = walletsData?.data ?? [];
+
+  const form = useForm<AgentFormValues>({
+    resolver: zodResolver(agentFormSchema),
+    defaultValues: {
+      name: "",
+      description: "",
+      templateType: undefined,
+      assignedWalletId: "",
+      role: "requester",
+      capabilities: defaultValues?.capabilities ?? [],
+      status: "active",
+      ...defaultValues,
+    },
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    if (isEdit) {
+      setStep("form");
+      setCreationPath(null);
+    } else {
+      setStep("choose");
+      setCreationPath(null);
+      form.reset({
+        name: "",
+        description: "",
+        templateType: undefined,
+        assignedWalletId: "",
+        role: "requester",
+        capabilities: defaultValues?.capabilities ?? [],
+        status: "active",
+        ...defaultValues,
+      });
+    }
+  }, [open, isEdit, defaultValues, form]);
+
+  const createMutation = useMutation({
+    mutationFn: (body: Parameters<typeof createAgent>[0]) =>
+      agentId ? updateAgent(agentId, body) : createAgent(body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agents"] });
+      if (agentId) queryClient.invalidateQueries({ queryKey: ["agents", agentId] });
+      onOpenChange(false);
+      form.reset();
+      setStep(isEdit ? "form" : "choose");
+      setCreationPath(null);
+    },
+  });
+
+  function handleChooseCustom() {
+    setCreationPath("custom");
+    form.setValue("templateType", "custom");
+    setStep("form");
+  }
+
+  function handleChooseTemplate() {
+    setCreationPath("template");
+    form.setValue("templateType", undefined);
+    setStep("form");
+  }
+
+  function handleBackToChoice() {
+    setStep("choose");
+    setCreationPath(null);
+    form.setValue("templateType", undefined);
+  }
+
+  function onSubmit(values: AgentFormValues) {
+    if (!isEdit && creationPath === "template") {
+      const t = values.templateType?.trim();
+      if (!t) {
+        form.setError("templateType", {
+          type: "manual",
+          message: "Choose a template to continue",
+        });
+        return;
+      }
+    }
+
+    const resolvedTemplate =
+      isEdit
+        ? values.templateType?.trim() || undefined
+        : !isEdit && creationPath === "custom"
+          ? "custom"
+          : values.templateType?.trim() || "custom";
+
+    const body = {
+      name: values.name,
+      description: values.description,
+      templateType: resolvedTemplate ?? "custom",
+      assignedWalletId: values.assignedWalletId,
+      role: values.role,
+      capabilities: values.capabilities,
+      status: values.status,
+    };
+    createMutation.mutate(body);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className={cn(
+          step === "choose" && !isEdit ? "max-w-3xl" : "sm:max-w-lg",
+          "max-h-[90vh] overflow-y-auto"
+        )}
+      >
+        {step === "choose" && !isEdit ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>Add an agent</DialogTitle>
+              <DialogDescription>
+                Choose how you want to connect this agent to Custos.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 pt-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={handleChooseCustom}
+                className={cn(
+                  "group flex flex-col rounded-xl border border-border bg-card p-6 text-left shadow-sm transition-all",
+                  "hover:border-primary/50 hover:bg-muted/40 hover:shadow-md",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                )}
+              >
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
+                  <Plug className="h-6 w-6" />
+                </div>
+                <h3 className="mt-4 text-base font-semibold text-foreground">
+                  Connect your agent
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  You already have an agent or integration. Register it here, assign a wallet, and use API keys to send transaction requests.
+                </p>
+                <span className="mt-4 inline-flex items-center text-sm font-medium text-primary">
+                  Continue
+                  <ChevronRight className="ml-1 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleChooseTemplate}
+                className={cn(
+                  "group flex flex-col rounded-xl border border-border bg-card p-6 text-left shadow-sm transition-all",
+                  "hover:border-primary/50 hover:bg-muted/40 hover:shadow-md",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                )}
+              >
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
+                  <LayoutTemplate className="h-6 w-6" />
+                </div>
+                <h3 className="mt-4 text-base font-semibold text-foreground">
+                  Start from a template
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  Use a pre-built agent type (e.g. Invoice, Travel). We’ll preconfigure roles and flows you can extend later.
+                </p>
+                <span className="mt-4 inline-flex items-center text-sm font-medium text-primary">
+                  Choose template
+                  <ChevronRight className="ml-1 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                </span>
+              </button>
+            </div>
+            <DialogFooter className="sm:justify-between">
+              <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <>
+            <DialogHeader>
+              {!isEdit && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-2 mb-1 w-fit gap-1 px-2 text-muted-foreground"
+                  onClick={handleBackToChoice}
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  Back
+                </Button>
+              )}
+              <DialogTitle>{isEdit ? "Edit agent" : "Agent details"}</DialogTitle>
+              <DialogDescription>
+                {isEdit
+                  ? "Update this agent’s settings."
+                  : creationPath === "custom"
+                    ? "Name your agent and connect it to a wallet. Template is set to a custom integration."
+                    : "Pick a template, then name your agent and assign a wallet."}
+              </DialogDescription>
+            </DialogHeader>
+
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                {!isEdit && creationPath === "custom" && (
+                  <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                    <span className="font-medium text-foreground">Custom integration</span>
+                    — no template preset. You’ll configure behavior via API and policies.
+                  </div>
+                )}
+
+                {!isEdit && creationPath === "template" && (
+                  <FormField
+                    control={form.control}
+                    name="templateType"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Template</FormLabel>
+                        <FormControl>
+                          <div className="grid gap-2 sm:grid-cols-1">
+                            {AGENT_STARTER_TEMPLATES.map((t) => (
+                              <button
+                                key={t.value}
+                                type="button"
+                                onClick={() => {
+                                  field.onChange(t.value);
+                                  form.clearErrors("templateType");
+                                }}
+                                className={cn(
+                                  "rounded-lg border px-3 py-3 text-left text-sm transition-colors",
+                                  field.value === t.value
+                                    ? "border-primary bg-primary/10 ring-2 ring-primary/20"
+                                    : "border-border bg-card hover:bg-muted/50"
+                                )}
+                              >
+                                <span className="font-medium text-foreground">{t.label}</span>
+                                <p className="mt-0.5 text-xs text-muted-foreground">{t.description}</p>
+                              </button>
+                            ))}
+                          </div>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="e.g. AP Invoice Bot" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Description (optional)</FormLabel>
+                      <FormControl>
+                        <Textarea placeholder="What this agent does" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {isEdit && (
+                  <FormField
+                    control={form.control}
+                    name="templateType"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Template type (optional)</FormLabel>
+                        <Select
+                          onValueChange={(v) => field.onChange(v === "__none__" ? undefined : v)}
+                          value={field.value ?? "__none__"}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Not set" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="__none__">Not specified</SelectItem>
+                            <SelectItem value="custom">Custom integration</SelectItem>
+                            {AGENT_STARTER_TEMPLATES.map((t) => (
+                              <SelectItem key={t.value} value={t.value}>
+                                {t.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
+                <FormField
+                  control={form.control}
+                  name="assignedWalletId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Assigned wallet</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select wallet" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {wallets.map((w) => (
+                            <SelectItem key={w.id} value={w.id}>
+                              {w.name}
+                            </SelectItem>
+                          ))}
+                          {wallets.length === 0 && (
+                            <SelectItem value="_none" disabled>
+                              No wallets — create one first
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="role"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Role</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {AGENT_ROLES.map((r) => (
+                            <SelectItem key={r.value} value={r.value}>
+                              {r.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={createMutation.isPending}>
+                    {createMutation.isPending
+                      ? isEdit
+                        ? "Saving…"
+                        : "Creating…"
+                      : isEdit
+                        ? "Save"
+                        : "Create agent"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </Form>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
