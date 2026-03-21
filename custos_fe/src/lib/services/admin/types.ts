@@ -1,0 +1,108 @@
+export type CompanyStatus = "active" | "inactive" | "under_review";
+export type AgentStatus = "active" | "paused" | "revoked" | "deleted";
+export type ApprovalStatus =
+  | "auto_approved"
+  | "pending_human_approval"
+  | "human_approved"
+  | "rejected";
+export type PaymentStatus =
+  | "pending"
+  | "scheduled"
+  | "processing"
+  | "paid"
+  | "failed"
+  | "cancelled";
+export type RuleEvaluationResult =
+  | "approved_by_rules"
+  | "blocked_by_rules"
+  | "needs_review";
+export type PaymentMethod = "ach" | "wire" | "card" | "check" | "crypto" | "other";
+
+export interface CompanySummary {
+  clientId: string;
+  companyName: string;
+  companyStatus: CompanyStatus;
+  defaultCurrency: string;
+  agentCount: number;
+  transactionCount: number;
+  pendingApprovalCount: number;
+  paidVolume: number;
+  lastTransactionAt: string | null;
+}
+
+export interface AdminAgent {
+  agentId: string;
+  clientId: string;
+  agentName: string;
+  agentType: string | null;
+  agentStatus: AgentStatus;
+  apiKeyId: string;
+  apiKeyPrefix: string | null;
+  monthlyAllowance: number;
+  approvalThreshold: number;
+  maxTransactionAmount: number;
+  currency: string;
+  vendorAllowlist: string[];
+  vendorDenylist: string[];
+  allowedPaymentMethods: PaymentMethod[];
+  riskLevel: string | null;
+  lastActiveAt: string | null;
+  description: string | null;
+  createdByUserId: string | null;
+  settings: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminTransactionAuditEvent {
+  eventId: string;
+  eventType: string;
+  eventTimestamp: string;
+  actorType: "system" | "user" | "agent";
+  actorId: string | null;
+  details: Record<string, unknown>;
+}
+
+export interface AdminTransaction {
+  transactionId: string;
+  clientId: string;
+  vendorId: string;
+  vendorNameSnapshot: string;
+  agentId: string | null;
+  requestedByUserId: string | null;
+  transactionType: string;
+  amount: number;
+  currency: string;
+  paymentMethod: PaymentMethod;
+  paymentStatus: PaymentStatus;
+  approvalStatus: ApprovalStatus;
+  ruleEvaluationResult: RuleEvaluationResult;
+  humanApprovalRequired: boolean;
+  humanApprovalReceived: boolean;
+  humanApprovedByUserId: string | null;
+  humanApprovedAt: string | null;
+  requestedPaymentDatetime: string | null;
+  scheduledPaymentDatetime: string | null;
+  paidAt: string | null;
+  invoiceFilePath: string | null;
+  description: string | null;
+  externalPaymentId: string | null;
+  encryptedPaymentRefId: string | null;
+  failureReason: string | null;
+  complianceFlags: string[];
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  auditTrail: AdminTransactionAuditEvent[];
+  manualReviewStatus: "pending" | "verified" | "rejected";
+  manuallyVerifiedByUserId: string | null;
+  manuallyVerifiedAt: string | null;
+  isHumanApproved: boolean;
+  isMade: boolean;
+}
+
+export interface ApprovalDecisionResult {
+  transaction: AdminTransaction;
+  reason?: string;
+}
