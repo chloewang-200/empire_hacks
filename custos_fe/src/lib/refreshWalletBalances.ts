@@ -11,10 +11,17 @@ function scheduleDelayedRefetch(queryClient: QueryClient, walletId: string) {
 }
 
 /** Invalidate + refetch wallet list/detail so balance updates without a full page reload. */
-export async function refreshWalletBalances(queryClient: QueryClient, walletId: string) {
+export async function refreshWalletBalances(queryClient: QueryClient, walletId?: string) {
   await queryClient.invalidateQueries({ queryKey: ["wallets"] });
-  await queryClient.invalidateQueries({ queryKey: ["wallets", walletId] });
-  await queryClient.refetchQueries({ queryKey: ["wallets", walletId] });
+  await queryClient.invalidateQueries({ queryKey: ["transactions"] });
+  if (walletId) {
+    await queryClient.invalidateQueries({ queryKey: ["wallets", walletId] });
+  }
+  if (walletId) {
+    await queryClient.refetchQueries({ queryKey: ["wallets", walletId] });
+  }
   await queryClient.refetchQueries({ queryKey: ["wallets"] });
-  scheduleDelayedRefetch(queryClient, walletId);
+  if (walletId) {
+    scheduleDelayedRefetch(queryClient, walletId);
+  }
 }

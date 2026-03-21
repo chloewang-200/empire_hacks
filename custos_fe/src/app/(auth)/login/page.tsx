@@ -1,7 +1,7 @@
 "use client";
 
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,17 +22,38 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [isLoadingGoogle, setIsLoadingGoogle] = useState(false);
   const [isLoadingEmail, setIsLoadingEmail] = useState(false);
-  const [oauthError, setOauthError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState("");
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const oauthError = searchParams.get("error");
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const err = params.get("error");
-    if (err) {
-      setOauthError(err);
-      setIsLoadingGoogle(false);
+  async function handleEmailSignIn() {
+    if (!email) return;
+
+    setEmailError("");
+    setIsLoadingEmail(true);
+
+    if (!authEnabled) {
+      router.push(email.trim().toLowerCase() === "admin@custos.ai" ? "/admin/companies" : "/overview");
+      return;
     }
-  }, []);
+
+    const result = await signIn("credentials", {
+      email,
+      redirect: false,
+    });
+
+    setIsLoadingEmail(false);
+
+    if (result?.error) {
+      setEmailError("We couldn't sign you in with that email.");
+      return;
+    }
+
+    const isAdmin = email.trim().toLowerCase() === "admin@custos.ai";
+    router.push(isAdmin ? "/admin/companies" : "/overview");
+    router.refresh();
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-background to-muted/30 px-4">
@@ -47,7 +68,7 @@ export default function LoginPage() {
           <CardHeader className="space-y-1">
             <CardTitle className="text-xl">Sign in</CardTitle>
             <CardDescription>
-              Continue with Google or enter your email. Email sign-in is in development.
+              Continue with Google or enter your email. Use `admin@custos.ai` for the mock admin view.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -101,13 +122,14 @@ export default function LoginPage() {
                 className="w-full"
                 disabled={isLoadingEmail || !email}
                 onClick={() => {
-                  setIsLoadingEmail(true);
-                  // TODO: Wire to credentials provider / magic link when backend is ready
-                  setIsLoadingEmail(false);
+                  void handleEmailSignIn();
                 }}
               >
-                Continue with Email (coming soon)
+                {isLoadingEmail ? "Signing in..." : "Continue with Email"}
               </Button>
+              {emailError ? (
+                <p className="text-sm text-destructive">{emailError}</p>
+              ) : null}
             </div>
           </CardContent>
         </Card>
