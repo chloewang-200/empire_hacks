@@ -29,6 +29,220 @@ import { stripe, stripeEnabled } from "./stripe.js";
 import { ensureStripeCustomerForWallet } from "./stripeWallet.js";
 import { z } from "zod";
 
+function parseJsonArray<T = Record<string, unknown>>(value: string | null | undefined): T[] {
+  try {
+    const parsed = JSON.parse(value ?? "[]") as unknown;
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function toAdminClientStatus(input: {
+  hasPendingTransactions: boolean;
+  agentCount: number;
+  transactionCount: number;
+}): "active" | "inactive" | "under_review" {
+  if (input.hasPendingTransactions) return "under_review";
+  if (input.agentCount === 0 && input.transactionCount === 0) return "inactive";
+  return "active";
+}
+
+function toAdminAgentJson(agent: Record<string, unknown>) {
+  const metadata =
+    agent.metadata && typeof agent.metadata === "object"
+      ? (agent.metadata as Record<string, unknown>)
+      : {};
+
+  return {
+    agentId: String(agent.agentId ?? agent.id ?? ""),
+    clientId: String(agent.clientId ?? ""),
+    agentName: String(agent.agentName ?? agent.name ?? "Agent"),
+    agentType: (agent.agentType as string | null | undefined) ?? null,
+    agentStatus: String(agent.agentStatus ?? agent.status ?? "active"),
+    apiKeyId: (agent.apiKeyId as string | null | undefined) ?? null,
+    apiKeyPrefix: (agent.apiKeyPrefix as string | null | undefined) ?? null,
+    monthlyAllowance: Number(agent.monthlyAllowance ?? 0),
+    approvalThreshold: Number(agent.approvalThreshold ?? 0),
+    maxTransactionAmount: Number(agent.maxTransactionAmount ?? 0),
+    currency: String(agent.currency ?? "USD"),
+    vendorAllowlist: Array.isArray(agent.vendorAllowlist)
+      ? (agent.vendorAllowlist as string[])
+      : [],
+    vendorDenylist: Array.isArray(agent.vendorDenylist)
+      ? (agent.vendorDenylist as string[])
+      : [],
+    allowedPaymentMethods: Array.isArray(agent.allowedPaymentMethods)
+      ? (agent.allowedPaymentMethods as string[])
+      : [],
+    riskLevel: (metadata.riskLevel as string | null | undefined) ?? null,
+    lastActiveAt: (metadata.lastActiveAt as string | null | undefined) ?? null,
+    description: (agent.description as string | null | undefined) ?? null,
+    createdByUserId: (agent.createdByUserId as string | null | undefined) ?? null,
+    settings:
+      agent.settings && typeof agent.settings === "object"
+        ? (agent.settings as Record<string, unknown>)
+        : {},
+    metadata,
+    createdAt: String(agent.createdAt ?? new Date().toISOString()),
+    updatedAt: String(agent.updatedAt ?? new Date().toISOString()),
+  };
+}
+
+function toAdminTransactionJson(tx: Record<string, unknown>) {
+  const status = String(tx.status ?? "pending_review");
+  const reviewState = (tx.reviewState as string | undefined) ?? "pending";
+  const auditEvents = Array.isArray(tx.auditEvents)
+    ? (tx.auditEvents as Array<Record<string, unknown>>)
+    : [];
+  const verifyEvent = [...auditEvents]
+    .reverse()
+    .find((event) => String(event.action ?? "").toLowerCase().includes("rules verified"));
+
+  const approvalStatus =
+    reviewState === "approved" || status === "approved" || status === "settled"
+      ? "human_approved"
+      : reviewState === "rejected" || status === "blocked" || status === "canceled"
+        ? "rejected"
+        : "pending_human_approval";
+
+  const paymentStatus =
+    status === "settled"
+      ? "paid"
+      : status === "approved"
+        ? "scheduled"
+        : status === "blocked" || status === "canceled"
+          ? "cancelled"
+          : "pending";
+
+  const railType = String(tx.railType ?? "");
+  const paymentMethod =
+    railType === "merchant_card"
+      ? "card"
+      : railType === "wire"
+        ? "wire"
+        : railType === "ach" || railType === "bank_transfer"
+          ? "ach"
+          : "other";
+
+  const manualReviewStatus =
+    reviewState === "rejected"
+      ? "rejected"
+      : verifyEvent
+        ? "verified"
+        : "pending";
+
+  const auditTrail = auditEvents.map((event, index) => ({
+    eventId: String(event.id ?? index + 1),
+    eventType: String(event.action ?? event.type ?? "event"),
+    eventTimestamp: String(event.timestamp ?? tx.requestedAt ?? tx.updatedAt ?? new Date().toISOString()),
+    actorType:
+      event.type === "human" ? "user" : event.type === "agent" ? "agent" : "system",
+    actorId: (event.actor as string | null | undefined) ?? null,
+    details:
+      event.detail == null
+        ? {}
+        : {
+            detail: event.detail,
+          },
+  }));
+
+  const policyResult = String(tx.policyResult ?? "");
+  const ruleEvaluationResult =
+    status === "blocked"
+      ? "blocked_by_rules"
+      : status === "pending_review"
+        ? "needs_review"
+        : policyResult.includes("blocked") || policyResult.includes("denied")
+          ? "blocked_by_rules"
+          : "approved_by_rules";
+
+  const verifiedTimestamp =
+    verifyEvent != null ? String(verifyEvent.timestamp ?? tx.updatedAt ?? new Date().toISOString()) : null;
+  const verifiedActor = (verifyEvent?.actor as string | null | undefined) ?? null;
+
+  return {
+    transactionId: String(tx.id ?? ""),
+    clientId: String(tx.clientId ?? ""),
+    vendorId: (tx.matchedPayee &&
+    typeof tx.matchedPayee === "object" &&
+    "id" in (tx.matchedPayee as Record<string, unknown>)
+      ? String((tx.matchedPayee as Record<string, unknown>).id)
+      : ""),
+    vendorNameSnapshot: String(
+      tx.vendor ??
+        tx.recipient ??
+        ((tx.matchedPayee as Record<string, unknown> | undefined)?.displayName ?? "Unknown")
+    ),
+    agentId: (tx.agentId as string | null | undefined) ?? null,
+    requestedByUserId: null,
+    transactionType: String(tx.sourceKind ?? "manual"),
+    amount: Number(tx.amount ?? 0),
+    currency: String(tx.currency ?? "USD"),
+    paymentMethod,
+    paymentStatus,
+    approvalStatus,
+    ruleEvaluationResult,
+    humanApprovalRequired: status === "pending_review" || reviewState !== "pending",
+    humanApprovalReceived: reviewState === "approved",
+    humanApprovedByUserId:
+      reviewState === "approved"
+        ? (([...auditEvents]
+            .reverse()
+            .find((event) =>
+              String(event.action ?? "").toLowerCase().includes("human review: approve")
+            )?.actor as string | null | undefined) ?? null)
+        : null,
+    humanApprovedAt:
+      reviewState === "approved"
+        ? (([...auditEvents]
+            .reverse()
+            .find((event) =>
+              String(event.action ?? "").toLowerCase().includes("human review: approve")
+            )?.timestamp as string | null | undefined) ??
+          (tx.updatedAt as string | null | undefined) ??
+          null)
+        : null,
+    requestedPaymentDatetime: null,
+    scheduledPaymentDatetime: status === "approved" ? String(tx.updatedAt ?? tx.requestedAt ?? "") : null,
+    paidAt: (tx.settledAt as string | null | undefined) ?? null,
+    invoiceFilePath: null,
+    description: (tx.memo as string | null | undefined) ?? (tx.purpose as string | null | undefined) ?? null,
+    externalPaymentId: (tx.payoutExternalId as string | null | undefined) ?? null,
+    encryptedPaymentRefId: null,
+    failureReason: (tx.payoutError as string | null | undefined) ?? null,
+    complianceFlags: policyResult ? [policyResult] : [],
+    metadata:
+      tx.context && typeof tx.context === "object"
+        ? ({ context: tx.context } as Record<string, unknown>)
+        : {},
+    createdAt: String(tx.requestedAt ?? new Date().toISOString()),
+    updatedAt: String(tx.settledAt ?? tx.requestedAt ?? new Date().toISOString()),
+    auditTrail,
+    manualReviewStatus,
+    manuallyVerifiedByUserId: verifiedActor,
+    manuallyVerifiedAt: verifiedTimestamp,
+    isHumanApproved: reviewState === "approved",
+    isMade: status === "settled",
+  };
+}
+
+function appendAuditEvent(
+  existingAuditJson: string | null,
+  event: { action: string; actor?: string; detail?: string; type?: string }
+) {
+  const audit = parseJsonArray<Record<string, unknown>>(existingAuditJson);
+  audit.push({
+    id: String(audit.length + 1),
+    timestamp: new Date().toISOString(),
+    type: event.type ?? "human",
+    action: event.action,
+    actor: event.actor ?? "admin",
+    detail: event.detail,
+  });
+  return JSON.stringify(audit);
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const UPLOAD_ROOT = join(__dirname, "..", "uploads");
 
@@ -1246,6 +1460,406 @@ app.get("/api/transactions", async (req, reply) => {
     pageSize,
     hasMore: page * pageSize < total,
   };
+});
+
+/** Admin / debug: list all transactions across workspaces.
+ *  Guarded by X-Internal-Secret matching CUSTOS_INTERNAL_SECRET.
+ */
+app.get("/api/admin/clients", async (req, reply) => {
+  const secret = req.headers["x-internal-secret"] as string | undefined;
+  try {
+    assertInternalSecret(secret);
+  } catch {
+    return reply.status(401).send({ message: "Unauthorized" });
+  }
+
+  const workspaces = await prisma.workspace.findMany({
+    include: {
+      user: true,
+      agents: {
+        select: { budgetCurrency: true },
+        take: 1,
+      },
+      _count: {
+        select: {
+          agents: true,
+          transactions: true,
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const transactions = await prisma.transaction.findMany({
+    select: {
+      workspaceId: true,
+      status: true,
+      amountCents: true,
+      currency: true,
+      updatedAt: true,
+    },
+  });
+
+  const transactionMap = new Map<string, typeof transactions>();
+  for (const tx of transactions) {
+    const existing = transactionMap.get(tx.workspaceId) ?? [];
+    existing.push(tx);
+    transactionMap.set(tx.workspaceId, existing);
+  }
+
+  return workspaces.map((workspace) => {
+    const rows = transactionMap.get(workspace.id) ?? [];
+    const pendingApprovalCount = rows.filter((tx) => tx.status === "pending_review").length;
+    const paidVolume = rows
+      .filter((tx) => tx.status === "settled")
+      .reduce((sum, tx) => sum + tx.amountCents / 100, 0);
+    const lastTransactionAt =
+      rows
+        .map((tx) => tx.updatedAt.toISOString())
+        .sort()
+        .at(-1) ?? null;
+
+    return {
+      clientId: workspace.id,
+      clientName: workspace.name,
+      clientStatus: toAdminClientStatus({
+        hasPendingTransactions: pendingApprovalCount > 0,
+        agentCount: workspace._count.agents,
+        transactionCount: workspace._count.transactions,
+      }),
+      primaryContactUserId: workspace.user.id,
+      primaryContactName: workspace.user.name,
+      primaryContactEmail: workspace.user.email,
+      primaryContactRole: "owner",
+      defaultCurrency: workspace.agents[0]?.budgetCurrency ?? rows[0]?.currency ?? "USD",
+      agentCount: workspace._count.agents,
+      transactionCount: workspace._count.transactions,
+      pendingApprovalCount,
+      paidVolume,
+      lastTransactionAt,
+    };
+  });
+});
+
+app.get("/api/admin/clients/:clientId", async (req, reply) => {
+  const secret = req.headers["x-internal-secret"] as string | undefined;
+  try {
+    assertInternalSecret(secret);
+  } catch {
+    return reply.status(401).send({ message: "Unauthorized" });
+  }
+
+  const { clientId } = req.params as { clientId: string };
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: clientId },
+    include: {
+      user: true,
+      agents: {
+        select: { budgetCurrency: true },
+        take: 1,
+      },
+      _count: {
+        select: {
+          agents: true,
+          transactions: true,
+        },
+      },
+    },
+  });
+  if (!workspace) return reply.status(404).send({ message: "Not found" });
+
+  const rows = await prisma.transaction.findMany({
+    where: { workspaceId: clientId },
+    select: {
+      status: true,
+      amountCents: true,
+      currency: true,
+      updatedAt: true,
+    },
+  });
+
+  const pendingApprovalCount = rows.filter((tx) => tx.status === "pending_review").length;
+  const paidVolume = rows
+    .filter((tx) => tx.status === "settled")
+    .reduce((sum, tx) => sum + tx.amountCents / 100, 0);
+  const lastTransactionAt =
+    rows
+      .map((tx) => tx.updatedAt.toISOString())
+      .sort()
+      .at(-1) ?? null;
+
+  return {
+    clientId: workspace.id,
+    clientName: workspace.name,
+    clientStatus: toAdminClientStatus({
+      hasPendingTransactions: pendingApprovalCount > 0,
+      agentCount: workspace._count.agents,
+      transactionCount: workspace._count.transactions,
+    }),
+    primaryContactUserId: workspace.user.id,
+    primaryContactName: workspace.user.name,
+    primaryContactEmail: workspace.user.email,
+    primaryContactRole: "owner",
+    defaultCurrency: workspace.agents[0]?.budgetCurrency ?? rows[0]?.currency ?? "USD",
+    agentCount: workspace._count.agents,
+    transactionCount: workspace._count.transactions,
+    pendingApprovalCount,
+    paidVolume,
+    lastTransactionAt,
+  };
+});
+
+app.get("/api/admin/clients/:clientId/agents", async (req, reply) => {
+  const secret = req.headers["x-internal-secret"] as string | undefined;
+  try {
+    assertInternalSecret(secret);
+  } catch {
+    return reply.status(401).send({ message: "Unauthorized" });
+  }
+
+  const { clientId } = req.params as { clientId: string };
+  const rows = await prisma.agent.findMany({
+    where: { workspaceId: clientId },
+    include: agentInclude,
+    orderBy: { createdAt: "desc" },
+  });
+  return rows.map((row) => toAdminAgentJson(agentToJson(row) as Record<string, unknown>));
+});
+
+app.get("/api/admin/agents/:agentId", async (req, reply) => {
+  const secret = req.headers["x-internal-secret"] as string | undefined;
+  try {
+    assertInternalSecret(secret);
+  } catch {
+    return reply.status(401).send({ message: "Unauthorized" });
+  }
+
+  const { agentId } = req.params as { agentId: string };
+  const row = await prisma.agent.findUnique({
+    where: { id: agentId },
+    include: agentInclude,
+  });
+  if (!row) return reply.status(404).send({ message: "Not found" });
+  return toAdminAgentJson(agentToJson(row) as Record<string, unknown>);
+});
+
+app.get("/api/admin/agents/:agentId/transactions", async (req, reply) => {
+  const secret = req.headers["x-internal-secret"] as string | undefined;
+  try {
+    assertInternalSecret(secret);
+  } catch {
+    return reply.status(401).send({ message: "Unauthorized" });
+  }
+
+  const { agentId } = req.params as { agentId: string };
+  const rows = await prisma.transaction.findMany({
+    where: { agentId },
+    include: { agent: true, wallet: true, payee: true },
+    orderBy: { createdAt: "desc" },
+  });
+  return rows.map((row) =>
+    toAdminTransactionJson({
+      ...(transactionToJson(row) as Record<string, unknown>),
+      clientId: row.workspaceId,
+      updatedAt: row.updatedAt.toISOString(),
+    })
+  );
+});
+
+app.get("/api/admin/transactions", async (req, reply) => {
+  const secret = req.headers["x-internal-secret"] as string | undefined;
+  try {
+    assertInternalSecret(secret);
+  } catch {
+    return reply.status(401).send({ message: "Unauthorized" });
+  }
+
+  const { searchParams } = new URL(req.url, "http://localhost");
+  const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
+  const pageSize = Math.min(200, Math.max(1, parseInt(searchParams.get("pageSize") ?? "50", 10)));
+
+  const where: Record<string, unknown> = {};
+  const status = searchParams.get("status");
+  if (status) where.status = status;
+  const agentId = searchParams.get("agentId");
+  if (agentId) where.agentId = agentId;
+  const walletId = searchParams.get("walletId");
+  if (walletId) where.walletId = walletId;
+  const workspaceId = searchParams.get("workspaceId");
+  if (workspaceId) where.workspaceId = workspaceId;
+
+  const total = await prisma.transaction.count({ where });
+  const rows = await prisma.transaction.findMany({
+    where,
+    include: { agent: true, wallet: true, payee: true },
+    orderBy: { createdAt: "desc" },
+    skip: (page - 1) * pageSize,
+    take: pageSize,
+  });
+  return {
+    data: rows.map((t) => transactionToJson(t)),
+    total,
+    page,
+    pageSize,
+    hasMore: page * pageSize < total,
+  };
+});
+
+app.get("/api/admin/transactions/:id", async (req, reply) => {
+  const secret = req.headers["x-internal-secret"] as string | undefined;
+  try {
+    assertInternalSecret(secret);
+  } catch {
+    return reply.status(401).send({ message: "Unauthorized" });
+  }
+
+  const { id } = req.params as { id: string };
+  const tx = await prisma.transaction.findUnique({
+    where: { id },
+    include: { agent: true, wallet: true, payee: true },
+  });
+  if (!tx) return reply.status(404).send({ message: "Not found" });
+  return toAdminTransactionJson({
+    ...(transactionToJson(tx) as Record<string, unknown>),
+    clientId: tx.workspaceId,
+    updatedAt: tx.updatedAt.toISOString(),
+  });
+});
+
+app.patch("/api/admin/transactions/:id/review", async (req, reply) => {
+  const secret = req.headers["x-internal-secret"] as string | undefined;
+  try {
+    assertInternalSecret(secret);
+  } catch {
+    return reply.status(401).send({ message: "Unauthorized" });
+  }
+
+  const { id } = req.params as { id: string };
+  const body = z
+    .object({
+      decision: z.enum(["approve", "reject"]),
+      note: z.string().optional(),
+    })
+    .parse(req.body);
+  const tx = await prisma.transaction.findUnique({ where: { id } });
+  if (!tx) return reply.status(404).send({ message: "Not found" });
+
+  const updated = await prisma.transaction.update({
+    where: { id },
+    data: {
+      status: body.decision === "approve" ? "approved" : "blocked",
+      reviewState: body.decision === "approve" ? "approved" : "rejected",
+      auditJson: appendAuditEvent(tx.auditJson, {
+        action: `Human review: ${body.decision}`,
+        detail: body.note,
+      }),
+    },
+    include: { agent: true, wallet: true, payee: true },
+  });
+
+  return toAdminTransactionJson({
+    ...(transactionToJson(updated) as Record<string, unknown>),
+    clientId: updated.workspaceId,
+    updatedAt: updated.updatedAt.toISOString(),
+  });
+});
+
+app.patch("/api/admin/transactions/:id/reset-review", async (req, reply) => {
+  const secret = req.headers["x-internal-secret"] as string | undefined;
+  try {
+    assertInternalSecret(secret);
+  } catch {
+    return reply.status(401).send({ message: "Unauthorized" });
+  }
+
+  const { id } = req.params as { id: string };
+  const body = z.object({ note: z.string().optional() }).parse(req.body);
+  const tx = await prisma.transaction.findUnique({ where: { id } });
+  if (!tx) return reply.status(404).send({ message: "Not found" });
+
+  const updated = await prisma.transaction.update({
+    where: { id },
+    data: {
+      status: "pending_review",
+      reviewState: "pending",
+      auditJson: appendAuditEvent(tx.auditJson, {
+        action: "Review reset",
+        detail: body.note,
+      }),
+    },
+    include: { agent: true, wallet: true, payee: true },
+  });
+
+  return toAdminTransactionJson({
+    ...(transactionToJson(updated) as Record<string, unknown>),
+    clientId: updated.workspaceId,
+    updatedAt: updated.updatedAt.toISOString(),
+  });
+});
+
+app.patch("/api/admin/transactions/:id/verify", async (req, reply) => {
+  const secret = req.headers["x-internal-secret"] as string | undefined;
+  try {
+    assertInternalSecret(secret);
+  } catch {
+    return reply.status(401).send({ message: "Unauthorized" });
+  }
+
+  const { id } = req.params as { id: string };
+  const body = z.object({ note: z.string().optional() }).parse(req.body);
+  const tx = await prisma.transaction.findUnique({ where: { id } });
+  if (!tx) return reply.status(404).send({ message: "Not found" });
+
+  const updated = await prisma.transaction.update({
+    where: { id },
+    data: {
+      auditJson: appendAuditEvent(tx.auditJson, {
+        action: "Rules verified",
+        detail: body.note,
+      }),
+    },
+    include: { agent: true, wallet: true, payee: true },
+  });
+
+  return toAdminTransactionJson({
+    ...(transactionToJson(updated) as Record<string, unknown>),
+    clientId: updated.workspaceId,
+    updatedAt: updated.updatedAt.toISOString(),
+  });
+});
+
+app.patch("/api/admin/transactions/:id/settle", async (req, reply) => {
+  const secret = req.headers["x-internal-secret"] as string | undefined;
+  try {
+    assertInternalSecret(secret);
+  } catch {
+    return reply.status(401).send({ message: "Unauthorized" });
+  }
+
+  const { id } = req.params as { id: string };
+  const body = z.object({ note: z.string().optional() }).parse(req.body);
+  const tx = await prisma.transaction.findUnique({ where: { id } });
+  if (!tx) return reply.status(404).send({ message: "Not found" });
+
+  const updated = await prisma.transaction.update({
+    where: { id },
+    data: {
+      status: "settled",
+      reviewState: tx.reviewState === "rejected" ? tx.reviewState : "approved",
+      settledAt: new Date(),
+      auditJson: appendAuditEvent(tx.auditJson, {
+        action: "Marked settled",
+        detail: body.note,
+      }),
+    },
+    include: { agent: true, wallet: true, payee: true },
+  });
+
+  return toAdminTransactionJson({
+    ...(transactionToJson(updated) as Record<string, unknown>),
+    clientId: updated.workspaceId,
+    updatedAt: updated.updatedAt.toISOString(),
+  });
 });
 
 app.get("/api/transactions/:id", async (req, reply) => {

@@ -1,10 +1,11 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-const companyVariants: Record<string, "default" | "muted" | "warning"> = {
+const clientVariants: Record<string, "default" | "muted" | "warning"> = {
   active: "default",
-  inactive: "muted",
   under_review: "warning",
+  disabled: "muted",
+  inactive: "muted",
 };
 
 const agentVariants: Record<string, "default" | "warning" | "muted"> = {
@@ -12,6 +13,8 @@ const agentVariants: Record<string, "default" | "warning" | "muted"> = {
   paused: "warning",
   revoked: "muted",
   deleted: "muted",
+  disabled: "muted",
+  needs_setup: "warning",
 };
 
 const paymentVariants: Record<
@@ -40,7 +43,7 @@ function labelize(value: string) {
   return value.replace(/_/g, " ");
 }
 
-export function CompanyStatusBadge({
+export function AdminClientStatusBadge({
   status,
   className,
 }: {
@@ -48,11 +51,17 @@ export function CompanyStatusBadge({
   className?: string;
 }) {
   return (
-    <Badge variant={companyVariants[status] ?? "secondary"} className={cn("capitalize", className)}>
+    <Badge
+      variant={clientVariants[status] ?? "secondary"}
+      className={cn("capitalize", className)}
+    >
       {labelize(status)}
     </Badge>
   );
 }
+
+export const AdminUserStatusBadge = AdminClientStatusBadge;
+export const CompanyStatusBadge = AdminClientStatusBadge;
 
 export function AdminAgentStatusBadge({
   status,

@@ -54,7 +54,7 @@ export default function AdminAgentDetailPage() {
         queryKey: ["admin-agent-transactions", agentId],
       });
       await queryClient.invalidateQueries({ queryKey: ["admin-transaction"] });
-      await queryClient.invalidateQueries({ queryKey: ["admin-companies"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-clients"] });
     },
   });
 
@@ -66,7 +66,7 @@ export default function AdminAgentDetailPage() {
         queryKey: ["admin-agent-transactions", agentId],
       });
       await queryClient.invalidateQueries({ queryKey: ["admin-transaction"] });
-      await queryClient.invalidateQueries({ queryKey: ["admin-companies"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-clients"] });
     },
   });
 
@@ -78,7 +78,7 @@ export default function AdminAgentDetailPage() {
         queryKey: ["admin-agent-transactions", agentId],
       });
       await queryClient.invalidateQueries({ queryKey: ["admin-transaction"] });
-      await queryClient.invalidateQueries({ queryKey: ["admin-companies"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-clients"] });
     },
   });
 
@@ -122,7 +122,7 @@ export default function AdminAgentDetailPage() {
     <div className="space-y-8 animate-fade-up">
       <div className="flex items-start gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link href={`/admin/companies/${agent.clientId}`}>
+          <Link href={`/admin/clients/${agent.clientId}`}>
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>

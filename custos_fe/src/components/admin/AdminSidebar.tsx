@@ -6,7 +6,7 @@ import { Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { href: "/admin/companies", label: "Companies", icon: Building2 },
+  { href: "/admin/clients", label: "Clients", icon: Building2 },
 ];
 
 export function AdminSidebar() {
@@ -16,7 +16,7 @@ export function AdminSidebar() {
     <aside className="flex w-60 flex-col border-r border-sidebar-border bg-sidebar">
       <div className="flex h-14 items-center border-b border-sidebar-border px-4">
         <Link
-          href="/admin/companies"
+          href="/admin/clients"
           className="flex items-center gap-2 font-semibold text-sidebar-foreground"
         >
           <span className="text-lg">Custos Admin</span>
@@ -27,7 +27,7 @@ export function AdminSidebar() {
           const Icon = item.icon;
           const isActive =
             pathname === item.href ||
-            (item.href !== "/admin/companies" && pathname.startsWith(item.href));
+            (item.href !== "/admin/clients" && pathname.startsWith(item.href));
 
           return (
             <Link
