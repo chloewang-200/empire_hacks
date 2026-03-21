@@ -27,7 +27,9 @@
 
    - `NEXTAUTH_URL` (e.g. `http://localhost:3000`)
    - `NEXTAUTH_SECRET` (e.g. `openssl rand -base64 32`)
-   - `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` for Google sign-in
+   - `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (see **Google sign-in** below)
+   - `NEXT_PUBLIC_ENABLE_AUTH="true"` so the login page uses real Google OAuth (not “skip to overview”)
+   - With **custos_be** running: `NEXT_PUBLIC_API_URL`, `CUSTOS_API_URL` (e.g. `http://localhost:4000`), and `CUSTOS_INTERNAL_SECRET` matching the backend
 
 3. **Run**
 
@@ -36,6 +38,33 @@
    ```
 
    Open [http://localhost:3000](http://localhost:3000). Unauthenticated users are redirected to `/login`; after sign-in they land on `/overview`.
+
+## Google sign-in (OAuth)
+
+1. Open [Google Cloud Console](https://console.cloud.google.com/) → select or create a project.
+2. **APIs & Services** → **OAuth consent screen**: choose **External** (or Internal for Workspace-only), add app name, support email, developer contact, then **Save and continue** through scopes (defaults are fine for email/profile) and test users (add your Gmail if the app is in Testing).
+3. **Credentials** → **Create credentials** → **OAuth client ID** → Application type **Web application**.
+4. Under **Authorized JavaScript origins** add:
+   - `http://localhost:3000` (and your production origin later, e.g. `https://yourdomain.com`).
+5. Under **Authorized redirect URIs** add:
+   - `http://localhost:3000/api/auth/callback/google` (and production: `https://yourdomain.com/api/auth/callback/google`).
+6. Create the client and copy **Client ID** and **Client secret** into `.env.local` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+7. Ensure `NEXTAUTH_URL` exactly matches the site origin you use in the browser (e.g. `http://localhost:3000`).
+
+After sign-in, the server calls **custos_be** `/api/internal/bootstrap` to create or update your user and workspace (wallets and agents are **not** auto-created; you add them in the UI).
+
+### Troubleshooting `?error=OAuthSignin` on `/login`
+
+1. Set **`NEXTAUTH_SECRET`** in `.env.local` (e.g. `openssl rand -base64 32`) — empty secret breaks JWT signing.
+2. **`GOOGLE_CLIENT_ID`** and **`GOOGLE_CLIENT_SECRET`** must match the OAuth Web client (no extra spaces; paste the secret from Google or reset it).
+3. **Redirect URI** in Google Cloud must be exactly: `http://localhost:3000/api/auth/callback/google` (same port as `NEXTAUTH_URL`).
+4. If the OAuth consent screen is in **Testing**, add your Gmail under **Test users**.
+
+With `NODE_ENV=development`, NextAuth prints more detail in the **terminal** where `npm run dev` runs.
+
+### Still seeing “Operations Wallet” / “Invoice Agent” after we removed auto-creation?
+
+Bootstrap **no longer** creates those rows. If they still appear, they’re **old rows** in local SQLite from before the change (same Google user → same workspace → data still there). **Dev only:** from `custos_be` run `npm run db:reset` (wipes the local DB), then restart `custos_be` and sign in again — you’ll get an **empty** workspace until you create wallets/agents in the UI. Do **not** use this against a production database.
 
 ## Structure
 

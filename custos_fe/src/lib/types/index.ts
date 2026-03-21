@@ -102,6 +102,18 @@ export interface Evidence {
   uploadedAt: string;
 }
 
+/** How the payment is intended to be fulfilled (ACH, card, Venmo, etc.) */
+export type TransactionRailType =
+  | "merchant_card"
+  | "ach"
+  | "bank_transfer"
+  | "venmo_p2p"
+  | "paypal"
+  | "wire"
+  | "other";
+
+export type TransactionSourceKind = "api" | "invoice_upload" | "manual";
+
 export interface Transaction {
   id: string;
   requestedAt: string;
@@ -122,6 +134,9 @@ export interface Transaction {
   policyEvaluation?: PolicyEvaluationItem[];
   auditEvents?: AuditEvent[];
   settledAt?: string;
+  /** Payout / rail classification */
+  railType?: TransactionRailType | string;
+  sourceKind?: TransactionSourceKind | string;
 }
 
 export interface PolicyEvaluationItem {
@@ -155,6 +170,8 @@ export interface InvoiceExtractionResult {
   confidence?: number;
   sourceFileId?: string;
   rawFields?: Record<string, unknown>;
+  /** Suggested payout rail from extraction heuristics */
+  railType?: TransactionRailType | string;
 }
 
 export interface ApiKeyResponse {

@@ -39,6 +39,8 @@ export interface RequestTransactionBody {
   vendor?: string;
   category?: string;
   memo?: string;
+  railType?: string;
+  sourceKind?: string;
   evidence?: { type: string; [k: string]: unknown }[];
 }
 

@@ -5,9 +5,17 @@
  */
 
 const getBaseUrl = () => {
-  if (typeof window !== "undefined") return ""; // browser: use relative (Next API routes)
-  return process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+  if (typeof window !== "undefined") {
+    return process.env.NEXT_PUBLIC_API_URL ?? "";
+  }
+  return process.env.NEXT_PUBLIC_API_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000";
 };
+
+function getCustosAuthHeaders(): HeadersInit {
+  if (typeof window === "undefined") return {};
+  const token = sessionStorage.getItem("custos_jwt");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 export async function apiFetch<T>(
   path: string,
@@ -19,6 +27,7 @@ export async function apiFetch<T>(
     ...options,
     headers: {
       "Content-Type": "application/json",
+      ...getCustosAuthHeaders(),
       ...options.headers,
     },
     credentials: "include",

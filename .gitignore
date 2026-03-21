@@ -52,6 +52,11 @@ env/
 *.egg-info/
 .eggs/
 
+# Custos backend local DB & uploads
+custos_be/dev.db
+custos_be/dev.db-journal
+custos_be/uploads/
+
 # Misc
 *.swp
 *.swo

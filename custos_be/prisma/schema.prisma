@@ -1,0 +1,113 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String      @id @default(cuid())
+  email     String      @unique
+  name      String?
+  image     String?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  workspaces Workspace[]
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String   @default("Default")
+  spendMode String   @default("STRIPE_TEST")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  wallets   Wallet[]
+  agents    Agent[]
+  transactions Transaction[]
+}
+
+model Wallet {
+  id           String        @id @default(cuid())
+  workspaceId  String
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name         String
+  currency     String        @default("USD")
+  balanceCents Int           @default(0)
+  policyJson   String
+  status       String        @default("active")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  agents       Agent[]
+  transactions Transaction[]
+}
+
+model Agent {
+  id               String        @id @default(cuid())
+  workspaceId      String
+  workspace        Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  walletId         String
+  wallet           Wallet        @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  name             String
+  description      String?
+  templateType     String        @default("custom")
+  role             String        @default("requester")
+  capabilitiesJson String      @default("[]")
+  status           String        @default("active")
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  apiKeys          AgentApiKey[]
+  transactions     Transaction[]
+}
+
+model AgentApiKey {
+  id        String    @id @default(cuid())
+  agentId   String
+  agent     Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  keyPrefix String    @unique
+  keyHash   String
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  @@index([agentId])
+}
+
+model Transaction {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  walletId       String
+  wallet         Wallet    @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  agentId        String
+  agent          Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  amountCents    Int
+  currency       String    @default("USD")
+  railType       String    @default("merchant_card")
+  sourceKind     String    @default("api")
+  status         String
+  policyResult   String?
+  reviewState    String?
+  recipient      String?
+  vendor         String?
+  category       String?
+  memo           String?
+  idempotencyKey String?
+  evidenceJson   String?
+  policyEvalJson String?
+  auditJson      String?
+  settledAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([workspaceId, idempotencyKey])
+}
+
+model UploadedFile {
+  id        String   @id @default(cuid())
+  path      String
+  mimeType  String?
+  createdAt DateTime @default(now())
+}
