@@ -51,7 +51,15 @@ export function SidebarNav() {
                   : "text-sidebar-foreground hover:bg-sidebar-accent/80 hover:text-sidebar-accent-foreground"
               )}
             >
-              <Icon className="h-5 w-5 shrink-0" />
+              <Icon
+                className={cn(
+                  "h-5 w-5 shrink-0",
+                  !isActive &&
+                    (item.href === "/wallets" || item.href === "/agents") &&
+                    "text-neutral-950 dark:text-neutral-100"
+                )}
+                strokeWidth={item.href === "/wallets" || item.href === "/agents" ? 2 : undefined}
+              />
               {item.label}
             </Link>
           );

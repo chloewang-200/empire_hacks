@@ -16,8 +16,8 @@ export function TotalWalletsCard({ total, activeCount }: TotalWalletsCardProps) 
         <CardContent className="p-6">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/20">
-                <Wallet className="h-7 w-7" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white text-neutral-950 shadow-md ring-1 ring-black/10 dark:bg-neutral-950 dark:text-neutral-50 dark:ring-white/15">
+                <Wallet className="h-7 w-7" strokeWidth={2} />
               </div>
               <div>
                 <p className="text-sm font-medium opacity-90">Total Wallets</p>

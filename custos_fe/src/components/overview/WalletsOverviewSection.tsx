@@ -47,8 +47,8 @@ export function WalletsOverviewSection({ wallets, isLoading }: WalletsOverviewSe
         <div className="p-4">
           {!hasWallets ? (
             <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 py-12 px-4 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <Wallet className="h-7 w-7" />
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-neutral-200 text-neutral-950 shadow-sm ring-1 ring-black/5 dark:bg-neutral-800 dark:text-neutral-50 dark:ring-white/10">
+                <Wallet className="h-7 w-7" strokeWidth={2} />
               </div>
               <h3 className="mt-4 text-sm font-medium text-foreground">
                 No wallets yet
@@ -74,8 +74,8 @@ export function WalletsOverviewSection({ wallets, isLoading }: WalletsOverviewSe
                     onClick={() => router.push(`/wallets/${wallet.id}`)}
                     className="flex w-full items-center gap-3 rounded-lg px-2 py-3 text-left transition-colors hover:bg-muted/50"
                   >
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                      <Wallet className="h-5 w-5" />
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-neutral-950 shadow-sm ring-1 ring-black/5 dark:bg-neutral-800 dark:text-neutral-50 dark:ring-white/10">
+                      <Wallet className="h-5 w-5" strokeWidth={2} />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium text-foreground">

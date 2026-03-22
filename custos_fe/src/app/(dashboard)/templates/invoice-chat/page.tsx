@@ -323,8 +323,8 @@ export default function InvoiceChatTemplatePage() {
                     className={`flex gap-2 ${m.role === "user" ? "justify-end" : "justify-start"}`}
                   >
                     {m.role === "assistant" && (
-                      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
-                        <Bot className="h-4 w-4" />
+                      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-neutral-950 shadow-sm ring-1 ring-black/5 dark:bg-neutral-800 dark:text-neutral-50 dark:ring-white/10">
+                        <Bot className="h-4 w-4" strokeWidth={2} />
                       </span>
                     )}
                     <div
