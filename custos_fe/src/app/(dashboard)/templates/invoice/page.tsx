@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Upload, FileText } from "lucide-react";
+import { Upload, FileText, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,8 @@ export default function InvoiceAgentPage() {
   const [agentId, setAgentId] = useState("");
   const [purpose, setPurpose] = useState("");
   const [payeeOverrideId, setPayeeOverrideId] = useState("");
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const submitResultRef = useRef<HTMLDivElement>(null);
 
   const { data: walletsData } = useQuery({
     queryKey: ["wallets", { page: 1, pageSize: 100 }],
@@ -46,15 +48,35 @@ export default function InvoiceAgentPage() {
   const wallets = walletsData?.data ?? [];
   const agents = agentsData?.data ?? [];
 
+  const invoiceAgents = useMemo(
+    () => agents.filter((a) => a.templateType === "invoice"),
+    [agents]
+  );
+
+  const urlAgentId = searchParams.get("agentId");
+
+  /** Prefer URL agent; else the only invoice-template agent (if unique). */
   useEffect(() => {
-    const fromUrl = searchParams.get("agentId");
-    if (!fromUrl || agents.length === 0) return;
-    const agent = agents.find((a) => a.id === fromUrl);
-    if (agent) {
-      setAgentId(fromUrl);
-      setWalletId(agent.assignedWalletId);
+    if (agents.length === 0) return;
+
+    if (urlAgentId) {
+      const agent = agents.find((a) => a.id === urlAgentId);
+      if (agent) {
+        setAgentId(urlAgentId);
+        setWalletId(agent.assignedWalletId);
+      }
+      return;
     }
-  }, [searchParams, agents]);
+
+    if (invoiceAgents.length === 1) {
+      const only = invoiceAgents[0];
+      setAgentId(only.id);
+      setWalletId(only.assignedWalletId);
+    }
+  }, [agents, invoiceAgents, urlAgentId]);
+
+  const boundAgent = useMemo(() => agents.find((a) => a.id === agentId), [agents, agentId]);
+  const boundWallet = useMemo(() => wallets.find((w) => w.id === walletId), [wallets, walletId]);
 
   useEffect(() => {
     if (!extraction) return;
@@ -78,8 +100,19 @@ export default function InvoiceAgentPage() {
   const requestMutation = useMutation({
     mutationFn: (body: Parameters<typeof requestTransaction>[0]) =>
       requestTransaction(body),
-    onSuccess: setTxResult,
+    onSuccess: (tx) => {
+      setSubmitError(null);
+      setTxResult(tx);
+    },
+    onError: (e) => {
+      setSubmitError(e instanceof Error ? e.message : "Request failed");
+    },
   });
+
+  useEffect(() => {
+    if (!txResult) return;
+    submitResultRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [txResult]);
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -103,7 +136,15 @@ export default function InvoiceAgentPage() {
   }
 
   function handleSubmitRequest() {
-    if (!extraction?.amount || !walletId || !agentId) return;
+    setSubmitError(null);
+    if (extraction?.amount == null || Number.isNaN(extraction.amount)) {
+      setSubmitError("Missing amount on extraction — re-run extract or fix fields.");
+      return;
+    }
+    if (!walletId || !agentId) {
+      setSubmitError("No invoice agent selected. Create one with the Invoice template or open this page from the agent’s “Invoice upload” link.");
+      return;
+    }
     const wallet = wallets.find((w) => w.id === walletId);
     requestMutation.mutate({
       agentId,
@@ -143,9 +184,20 @@ export default function InvoiceAgentPage() {
           </Link>{" "}
           so vendor strings match your directory (or require a match in wallet policy).
         </p>
-        {searchParams.get("agentId") && (
+        {(urlAgentId || invoiceAgents.length === 1) && (
           <p className="mt-2 text-caption text-muted-foreground">
-            Agent and wallet pre-filled from your link. Requires a Custos session (same as the dashboard).
+            {urlAgentId
+              ? "Agent and wallet are fixed from your link."
+              : "Using your only Invoice-template agent and its wallet — no need to pick them below."}
+          </p>
+        )}
+        {invoiceAgents.length === 0 && (
+          <p className="mt-2 text-sm text-amber-800 dark:text-amber-200">
+            No agent with template <span className="font-mono">invoice</span> yet.{" "}
+            <Link href="/agents?create=1" className="font-medium underline underline-offset-4">
+              Create an agent
+            </Link>{" "}
+            and choose <strong>Invoice Agent</strong>, then return here.
           </p>
         )}
       </div>
@@ -244,32 +296,58 @@ export default function InvoiceAgentPage() {
                   placeholder="Shown on the transaction audit trail"
                 />
                 <Label className="text-muted-foreground">Submit payment request</Label>
-                <div className="flex flex-wrap gap-2">
-                  <select
-                    className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    value={walletId}
-                    onChange={(e) => setWalletId(e.target.value)}
+                {boundAgent && boundWallet ? (
+                  <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
+                    <p>
+                      <span className="text-muted-foreground">Agent</span>{" "}
+                      <span className="font-medium text-foreground">{boundAgent.name}</span>
+                      <span className="text-muted-foreground"> · wallet </span>
+                      <span className="font-medium text-foreground">{boundWallet.name}</span>
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Wallet always matches the agent’s assignment.{" "}
+                      <Link href={`/agents/${boundAgent.id}`} className="text-primary underline-offset-4 hover:underline">
+                        Change agent or wallet
+                      </Link>
+                    </p>
+                  </div>
+                ) : null}
+                {invoiceAgents.length > 1 && !urlAgentId ? (
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Invoice agent (template)</Label>
+                    <select
+                      className="w-full max-w-md rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      value={agentId}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setAgentId(id);
+                        const a = agents.find((x) => x.id === id);
+                        if (a) setWalletId(a.assignedWalletId);
+                      }}
+                    >
+                      <option value="">Select invoice agent</option>
+                      {invoiceAgents.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
+                {urlAgentId && !boundAgent ? (
+                  <p className="text-sm text-destructive">
+                    Linked agent not found — open from Agents or pick an invoice agent after creating one.
+                  </p>
+                ) : null}
+                {submitError ? (
+                  <div
+                    className="flex gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                    role="alert"
                   >
-                    <option value="">Select wallet</option>
-                    {wallets.map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {w.name}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    value={agentId}
-                    onChange={(e) => setAgentId(e.target.value)}
-                  >
-                    <option value="">Select agent</option>
-                    {agents.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>{submitError}</span>
+                  </div>
+                ) : null}
                 <div>
                   <Label className="text-muted-foreground">Override approved payee (optional)</Label>
                   <select
@@ -288,45 +366,57 @@ export default function InvoiceAgentPage() {
                   </select>
                 </div>
                 <Button
-                  onClick={handleSubmitRequest}
+                  onClick={() => handleSubmitRequest()}
                   disabled={
                     requestMutation.isPending ||
                     !walletId ||
                     !agentId ||
-                    extraction.amount == null
+                    extraction.amount == null ||
+                    (!urlAgentId && invoiceAgents.length === 0)
                   }
                 >
                   {requestMutation.isPending ? "Submitting…" : "Submit request"}
                 </Button>
+
+                {txResult ? (
+                  <div
+                    ref={submitResultRef}
+                    className="space-y-3 rounded-lg border border-emerald-600/25 bg-emerald-600/5 px-4 py-3 dark:border-emerald-500/30 dark:bg-emerald-500/10"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <div className="flex items-start gap-2">
+                      <CheckCircle2
+                        className="h-5 w-5 shrink-0 text-emerald-700 dark:text-emerald-400"
+                        aria-hidden
+                      />
+                      <div>
+                        <p className="font-semibold text-foreground">Request submitted</p>
+                        <p className="mt-0.5 text-sm text-muted-foreground">
+                          Custos recorded this spend request. Policy outcome:
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 pl-7 sm:pl-0 sm:ml-7">
+                      <TransactionStatusBadge status={txResult.status} />
+                      {txResult.policyResult ? (
+                        <span className="text-sm text-muted-foreground">
+                          {txResult.policyResult.replace(/_/g, " ")}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="pl-7 sm:pl-0 sm:ml-7">
+                      <Button size="sm" asChild>
+                        <Link href={`/transactions/${txResult.id}`}>Open transaction</Link>
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </CardContent>
           </Card>
         )}
       </div>
-
-      {txResult && (
-        <Card className="border-primary/30 bg-primary/5">
-          <CardHeader>
-            <CardTitle className="text-base">Policy decision</CardTitle>
-            <CardDescription>
-              Transaction request evaluated. Result below.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="flex items-center gap-2">
-              <TransactionStatusBadge status={txResult.status} />
-              {txResult.policyResult && (
-                <span className="text-body-sm text-muted-foreground">
-                  — {txResult.policyResult.replace(/_/g, " ")}
-                </span>
-              )}
-            </div>
-            <Button variant="outline" size="sm" asChild>
-              <Link href={`/transactions/${txResult.id}`}>View transaction</Link>
-            </Button>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

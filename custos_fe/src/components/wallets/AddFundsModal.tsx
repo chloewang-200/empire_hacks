@@ -32,6 +32,8 @@ interface AddFundsModalProps {
   walletId: string;
   walletName?: string;
   currency: string;
+  /** Shown when card-at-spend: top-up ≠ saving a card for payouts */
+  fundingModel?: "prefund" | "connect_destination";
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -158,6 +160,7 @@ function CarlosManualFundForm({
 export function AddFundsModal({
   walletId,
   currency,
+  fundingModel = "prefund",
   open,
   onOpenChange,
 }: AddFundsModalProps) {
@@ -230,6 +233,13 @@ export function AddFundsModal({
               </div>
 
               <div className="border-t border-border pt-4">
+                {rail === "card" && fundingModel === "connect_destination" && (
+                  <p className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-950 dark:text-amber-100">
+                    This wallet uses <strong>card-at-spend</strong> for Connect payouts. <strong>Add funds</strong>{" "}
+                    tops up your balance only. To fix “saved payment method required”, close this modal and use{" "}
+                    <strong>Card for Connect payouts</strong> on the wallet page.
+                  </p>
+                )}
                 {rail === "card" && (
                   <StripeWalletFundSection
                     embedded

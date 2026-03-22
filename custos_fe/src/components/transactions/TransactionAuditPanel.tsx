@@ -1,12 +1,18 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Banknote, FileText, Shield } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { PolicyResultBadge } from "@/components/status/StatusBadge";
 import { TransactionStatusBadge } from "@/components/status/StatusBadge";
 import { formatDateTime } from "@/lib/utils";
+import { reviewTransaction } from "@/lib/api/transactions";
 import type { CitedRule, Transaction } from "@/lib/types";
 
 const auditTypeLabel: Record<string, string> = {
@@ -53,6 +59,8 @@ export function TransactionAuditPanel({ tx }: { tx: Transaction }) {
           </div>
         </div>
       )}
+
+      <TransactionReviewActions tx={tx} />
 
       <div className="flex flex-wrap items-center gap-2">
         <TransactionStatusBadge status={tx.status} />
@@ -320,5 +328,72 @@ function ButtonLinkReviewQueue({ className }: { className?: string }) {
     <Link href="/review-queue" className={className}>
       Open review queue
     </Link>
+  );
+}
+
+function TransactionReviewActions({ tx }: { tx: Transaction }) {
+  const queryClient = useQueryClient();
+  const [note, setNote] = useState("");
+
+  const awaitingHuman =
+    tx.status === "pending_review" && (tx.reviewState === "pending" || tx.reviewState == null);
+
+  const mutation = useMutation({
+    mutationFn: (decision: "approve" | "reject") =>
+      reviewTransaction(tx.id, { decision, note: note.trim() || undefined }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["transactions", tx.id] });
+      await queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      await queryClient.invalidateQueries({ queryKey: ["review-queue"] });
+    },
+  });
+
+  if (!awaitingHuman) return null;
+
+  return (
+    <Card className="border-primary/35 bg-primary/[0.06] shadow-sm">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">Your decision</CardTitle>
+        <CardDescription>
+          Approve to mark this spend allowed (and run auto-payout if the wallet has it on). Decline to block it.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div>
+          <Label htmlFor={`review-note-${tx.id}`}>Note for audit log (optional)</Label>
+          <Textarea
+            id={`review-note-${tx.id}`}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            className="mt-1.5 resize-none text-sm"
+            placeholder="e.g. Verified against invoice PDF"
+            disabled={mutation.isPending}
+          />
+        </div>
+        {mutation.isError && (
+          <p className="text-sm text-destructive">
+            {mutation.error instanceof Error ? mutation.error.message : "Review failed"}
+          </p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            disabled={mutation.isPending}
+            onClick={() => mutation.mutate("approve")}
+          >
+            {mutation.isPending ? "Working…" : "Approve"}
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={mutation.isPending}
+            onClick={() => mutation.mutate("reject")}
+          >
+            Decline
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

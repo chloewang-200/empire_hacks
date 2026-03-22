@@ -244,6 +244,32 @@ function appendAuditEvent(
   return JSON.stringify(audit);
 }
 
+function humanizePolicyResult(policyResult: string | null | undefined): string {
+  const raw = (policyResult ?? "").trim();
+  if (!raw) return "Needs manual review";
+  return raw.replace(/_/g, " ");
+}
+
+function deriveReviewFlaggedReason(transaction: Record<string, unknown>): string | undefined {
+  const policyEvaluation = Array.isArray(transaction.policyEvaluation)
+    ? (transaction.policyEvaluation as Array<Record<string, unknown>>)
+    : [];
+
+  const firstFail = policyEvaluation.find((item) => item?.result === "fail");
+  if (firstFail) {
+    const check = typeof firstFail.check === "string" ? firstFail.check.trim() : "";
+    const detail = typeof firstFail.detail === "string" ? firstFail.detail.trim() : "";
+    if (check && detail) return `${check}: ${detail}`;
+    if (check) return check;
+    if (detail) return detail;
+  }
+
+  const policyResult = humanizePolicyResult(
+    typeof transaction.policyResult === "string" ? transaction.policyResult : undefined
+  );
+  return policyResult ? policyResult.charAt(0).toUpperCase() + policyResult.slice(1) : undefined;
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const UPLOAD_ROOT = join(__dirname, "..", "uploads");
 
@@ -1959,12 +1985,16 @@ app.get("/api/review-queue", async (req, reply) => {
     take: pageSize,
   });
   const now = Date.now();
-  const data = rows.map((t) => ({
-    transactionId: t.id,
-    transaction: transactionToJson(t),
-    ageMinutes: Math.floor((now - t.createdAt.getTime()) / 60000),
-    reviewerStatus: "pending" as const,
-  }));
+  const data = rows.map((t) => {
+    const tx: Record<string, unknown> = transactionToJson(t);
+    return {
+      transactionId: t.id,
+      transaction: tx,
+      flaggedReason: deriveReviewFlaggedReason(tx),
+      ageMinutes: Math.floor((now - t.createdAt.getTime()) / 60000),
+      reviewerStatus: "pending" as const,
+    };
+  });
   return { data, total };
 });
 
@@ -2043,6 +2073,21 @@ app.post("/api/invoice/upload", async (req, reply) => {
   return { fileId: id, url: undefined };
 });
 
+  function mockInvoiceExtraction(fileId: string, memoExtra?: string) {
+    return {
+      vendor: "Extracted Vendor (mock)",
+      invoiceNumber: `INV-${fileId.slice(-6)}`,
+      amount: 1250,
+      dueDate: new Date().toISOString().slice(0, 10),
+      memo: memoExtra
+        ? `Mock extraction — ${memoExtra}`
+        : "Mock extraction — set CUSTOS_INVOICE_AGENT_URL for real OCR (or run custos_agents/invoice on :4001)",
+      confidence: 0.5,
+      sourceFileId: fileId,
+      railType: "merchant_card" as const,
+    };
+  }
+
 app.post("/api/invoice/extract", async (req, reply) => {
   const user = await requireUser(req.headers.authorization);
   const ws = await getWorkspaceForUser(user.id);
@@ -2051,33 +2096,34 @@ app.post("/api/invoice/extract", async (req, reply) => {
   const file = await prisma.uploadedFile.findUnique({ where: { id: body.fileId } });
   if (!file) return reply.status(404).send({ message: "File not found" });
 
-  const agentUrl = process.env.CUSTOS_INVOICE_AGENT_URL;
+  const agentUrl = process.env.CUSTOS_INVOICE_AGENT_URL?.trim();
   if (agentUrl) {
-    const buf = await readFile(file.path);
-    const form = new FormData();
-    form.append(
-      "file",
-      new Blob([buf], { type: file.mimeType ?? "image/png" }),
-      "invoice.png"
-    );
-    const r = await fetch(agentUrl, { method: "POST", body: form });
-    if (!r.ok) {
-      return reply.status(502).send({ message: await r.text() });
+    try {
+      const buf = await readFile(file.path);
+      const form = new FormData();
+      form.append(
+        "file",
+        new Blob([buf], { type: file.mimeType ?? "image/png" }),
+        "invoice.png"
+      );
+      const r = await fetch(agentUrl, { method: "POST", body: form });
+      if (!r.ok) {
+        const t = await r.text();
+        req.log.warn({ status: r.status, agentUrl }, "invoice agent HTTP error; falling back to mock");
+        return mockInvoiceExtraction(body.fileId, `agent returned ${r.status}: ${t.slice(0, 120)}`);
+      }
+      return (await r.json()) as Record<string, unknown>;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      req.log.warn({ err: msg, agentUrl }, "invoice agent unreachable; falling back to mock");
+      return mockInvoiceExtraction(
+        body.fileId,
+        "invoice agent unreachable (start `npm run dev` in custos_agents/invoice or comment out CUSTOS_INVOICE_AGENT_URL)"
+      );
     }
-    return await r.json();
   }
 
-  // Mock extraction when no invoice agent is configured
-  return {
-    vendor: "Extracted Vendor (mock)",
-    invoiceNumber: `INV-${body.fileId.slice(-6)}`,
-    amount: 1250,
-    dueDate: new Date().toISOString().slice(0, 10),
-    memo: "Mock extraction — set CUSTOS_INVOICE_AGENT_URL for real OCR",
-    confidence: 0.5,
-    sourceFileId: body.fileId,
-    railType: "merchant_card",
-  };
+  return mockInvoiceExtraction(body.fileId);
 });
 
 const port = Number(process.env.PORT ?? 4000);

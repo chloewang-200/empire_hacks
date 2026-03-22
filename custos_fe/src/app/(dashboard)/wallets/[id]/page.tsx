@@ -14,6 +14,7 @@ import { FundingPreferenceHint } from "@/components/wallets/FundingPreferenceHin
 import { refreshWalletBalances } from "@/lib/refreshWalletBalances";
 import { WalletStatusBadge } from "@/components/status/StatusBadge";
 import { AddFundsModal } from "@/components/wallets/AddFundsModal";
+import { StripeConnectCardSetupSection } from "@/components/wallets/StripeConnectCardSetupSection";
 import { formatCurrency } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
 
@@ -40,6 +41,11 @@ export default function WalletDetailPage() {
 
   useEffect(() => {
     if (searchParams.get("funded") !== "1") return;
+    void refreshWalletBalances(queryClient, id);
+  }, [searchParams, id, queryClient]);
+
+  useEffect(() => {
+    if (searchParams.get("card_on_file") !== "1") return;
     void refreshWalletBalances(queryClient, id);
   }, [searchParams, id, queryClient]);
 
@@ -144,6 +150,23 @@ export default function WalletDetailPage() {
             <span className="text-muted-foreground">Auto payout:</span>{" "}
             {wallet.policy?.autoExecutePayout ? "On" : "Off"}
           </p>
+          <p className="text-body-sm">
+            <span className="text-muted-foreground">Funding model:</span>{" "}
+            {wallet.fundingModel === "connect_destination" ? (
+              <>
+                <span className="font-medium">Connect destination</span>
+                <span className="text-muted-foreground">
+                  {" "}
+                  (charge saved card per payout — use “Card for Connect payouts” below)
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="font-medium">Prefund</span>
+                <span className="text-muted-foreground"> (spend from wallet balance)</span>
+              </>
+            )}
+          </p>
           {wallet.policy?.allowedPayoutRails?.length ? (
             <p className="text-body-sm">
               <span className="text-muted-foreground">Allowed rails:</span>{" "}
@@ -152,6 +175,24 @@ export default function WalletDetailPage() {
           ) : null}
         </CardContent>
       </Card>
+
+      {wallet.fundingModel === "connect_destination" ? (
+        <Card className="border-amber-500/25 bg-amber-500/[0.04] dark:border-amber-500/20">
+          <CardHeader>
+            <CardTitle className="text-base">Card for Connect payouts</CardTitle>
+            <CardDescription>
+              Required when auto-payout is on: a default payment method for off-session destination charges. This is
+              separate from <strong>Add funds</strong> (top-up).
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <StripeConnectCardSetupSection
+              walletId={wallet.id}
+              hasDefaultPaymentMethod={Boolean(wallet.hasDefaultPaymentMethod)}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="flex gap-2">
         <Button variant="outline" asChild>
@@ -169,6 +210,7 @@ export default function WalletDetailPage() {
         walletId={wallet.id}
         walletName={wallet.name}
         currency={wallet.currency}
+        fundingModel={wallet.fundingModel ?? "prefund"}
         open={fundOpen}
         onOpenChange={setFundOpen}
       />
