@@ -9,6 +9,11 @@ import {
   evaluateAgentSpendGates,
   parseAgentSettings,
 } from "./agentGovernance.js";
+import {
+  compileAuditPolicyText,
+  evaluateInvoiceAudit,
+  getAuditPolicyText,
+} from "./auditPolicy.js";
 import { applyTrustLayerToOutcome } from "./trustSignals.js";
 
 function mergeAllowedPayoutRails(
@@ -47,6 +52,18 @@ function mergeAllowedCategories(
   if (a.length) return a;
   if (w.length) return w;
   return undefined;
+}
+
+function parseJsonObject<T = Record<string, unknown>>(value: string | null | undefined): T {
+  try {
+    const parsed = JSON.parse(value ?? "{}") as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as T;
+    }
+    return {} as T;
+  } catch {
+    return {} as T;
+  }
 }
 
 function mergeWalletPolicyWithAgent(
@@ -172,6 +189,29 @@ export async function submitAgentTransactionRequest(
   const hasEvidence = (body.evidence?.length ?? 0) > 0;
   const requestedPayoutRail =
     body.railType?.trim() || resolvedPayee?.defaultRail || "merchant_card";
+  const requestContext =
+    body.context && typeof body.context === "object" && !Array.isArray(body.context)
+      ? body.context
+      : undefined;
+  const invoiceNumber =
+    typeof requestContext?.invoiceNumber === "string" ? requestContext.invoiceNumber : undefined;
+  const dueDate =
+    typeof requestContext?.dueDate === "string" ? requestContext.dueDate : undefined;
+  const extractionConfidenceFromContext =
+    typeof requestContext?.extractionConfidence === "number"
+      ? requestContext.extractionConfidence
+      : undefined;
+  const evidenceFirst = body.evidence?.[0];
+  const evidenceObject =
+    evidenceFirst && typeof evidenceFirst === "object" && !Array.isArray(evidenceFirst)
+      ? (evidenceFirst as Record<string, unknown>)
+      : undefined;
+  const extractionConfidence =
+    extractionConfidenceFromContext ??
+    (typeof evidenceObject?.confidence === "number" ? evidenceObject.confidence : undefined) ??
+    (typeof evidenceObject?.extractionConfidence === "number"
+      ? evidenceObject.extractionConfidence
+      : undefined);
 
   const fullAgent = await prisma.agent.findFirst({
     where: { id: agent.id, workspaceId: agent.workspaceId },
@@ -194,6 +234,8 @@ export async function submitAgentTransactionRequest(
   );
 
   const agentLists = parseAgentSettings(fullAgent);
+  const auditPolicyText = getAuditPolicyText(agentLists.settings);
+  const auditPolicy = compileAuditPolicyText(auditPolicyText);
   const mergedPolicy = mergeWalletPolicyWithAgent(policy, {
     requireApprovedPayee: fullAgent.requireApprovedPayee,
     ...agentLists,
@@ -245,6 +287,72 @@ export async function submitAgentTransactionRequest(
     citedRules: body.citedRules,
     evidence: body.evidence,
   });
+
+  const isInvoiceRequest =
+    body.sourceKind === "invoice_upload" || fullAgent.templateType === "invoice";
+  let invoiceAudit:
+    | {
+        checks: { check: string; result: "pass" | "fail"; detail?: string }[];
+        reviewRequired: boolean;
+      }
+    | null = null;
+  if (isInvoiceRequest && auditPolicy.enabled) {
+    const recentInvoicesRaw = await prisma.transaction.findMany({
+      where: {
+        workspaceId: agent.workspaceId,
+        sourceKind: "invoice_upload",
+        createdAt: { lt: new Date() },
+      },
+      select: {
+        vendor: true,
+        amountCents: true,
+        contextJson: true,
+      },
+      orderBy: { createdAt: "desc" },
+      take: 25,
+    });
+    const recentInvoices = recentInvoicesRaw.map((row) => {
+      const context = parseJsonObject<Record<string, unknown>>(row.contextJson);
+      return {
+        vendor: row.vendor ?? undefined,
+        amountCents: row.amountCents,
+        invoiceNumber:
+          typeof context.invoiceNumber === "string" ? context.invoiceNumber : undefined,
+      };
+    });
+
+    invoiceAudit = evaluateInvoiceAudit({
+      auditPolicy,
+      vendor: body.vendor,
+      amountCents,
+      invoiceNumber,
+      dueDate,
+      extractionConfidence,
+      requestedPayoutRail,
+      matchedPayeeName: resolvedPayee?.displayName ?? undefined,
+      matchedPayeeRail: resolvedPayee?.defaultRail ?? undefined,
+      hasEvidence,
+      citedRulesCount: body.citedRules?.length ?? 0,
+      recentInvoices,
+    });
+
+    outcome = {
+      ...outcome,
+      policyEvaluation: [...outcome.policyEvaluation, ...invoiceAudit.checks],
+    };
+    if (
+      invoiceAudit.reviewRequired &&
+      outcome.status === "approved" &&
+      outcome.policyResult === "within_policy"
+    ) {
+      outcome = {
+        ...outcome,
+        policyResult: "needs_manual_approval",
+        status: "pending_review",
+        reviewState: "pending",
+      };
+    }
+  }
 
   if (body.idempotencyKey) {
     const existing = await prisma.transaction.findFirst({
@@ -319,6 +427,19 @@ export async function submitAgentTransactionRequest(
       type: "citations",
       action: "Cited rules / sources",
       detail: JSON.stringify(body.citedRules),
+    });
+  }
+  if (invoiceAudit) {
+    audit.push({
+      id: String(seq++),
+      timestamp: ts,
+      type: "invoice_auditor",
+      action: invoiceAudit.reviewRequired ? "Invoice auditor escalated" : "Invoice auditor pass",
+      actor: "invoice auditor",
+      detail: JSON.stringify({
+        policyText: auditPolicyText,
+        checks: invoiceAudit.checks,
+      }),
     });
   }
   if (body.riskScore != null || (body.riskFlags?.length ?? 0) > 0) {

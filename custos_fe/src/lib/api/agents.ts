@@ -1,6 +1,7 @@
 import type { Agent, PaginatedResponse } from "@/lib/types";
 import { apiGet, apiPost, apiPatch, apiDelete } from "./client";
 import type { ApiKeyResponse } from "@/lib/types";
+import type { AgentSettings } from "@/lib/types";
 
 export async function getAgents(params?: {
   page?: number;
@@ -45,6 +46,7 @@ export interface CreateAgentBody {
   allowedPayoutRails?: string[];
   allowedCategories?: string[];
   restrictedVendors?: string[];
+  settings?: AgentSettings;
 }
 
 export async function createAgent(body: CreateAgentBody): Promise<Agent> {

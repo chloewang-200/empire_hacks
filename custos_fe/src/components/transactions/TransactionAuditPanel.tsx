@@ -25,6 +25,7 @@ const auditTypeLabel: Record<string, string> = {
   agent_decision: "Agent decision",
   citations: "Citations",
   risk: "Risk",
+  invoice_auditor: "Invoice auditor",
 };
 
 function ContextJson({ value }: { value: Record<string, unknown> }) {

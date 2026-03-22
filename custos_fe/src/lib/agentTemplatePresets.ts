@@ -5,7 +5,7 @@ const EVENT_DESC =
   "Plans vendor payables from event budgets and contracts; each line is submitted as a separate Custos transaction with risk signals.";
 
 const INVOICE_DESC =
-  "Extracts fields from invoice uploads and requests payment through wallet policy.";
+  "Extracts invoice fields, proposes payment, and hands the request to an auditor-style control flow.";
 
 /** Apply suggested copy and governance defaults when user picks a starter template. */
 export function applyStarterTemplateFields(
@@ -15,12 +15,18 @@ export function applyStarterTemplateFields(
   if (templateId === "event_production") {
     setValue("description", EVENT_DESC);
     setValue("allowedCategories", ["events_production"]);
+    setValue("auditPolicyText", "");
     return;
   }
   if (templateId === "invoice") {
     setValue("description", INVOICE_DESC);
     setValue("allowedCategories", []);
+    setValue(
+      "auditPolicyText",
+      "Flag duplicate invoices by vendor + invoice number + amount. Review unmatched vendors. Escalate confidence below 85%. Require citations and invoice evidence. Review rail mismatch and missing due date."
+    );
     return;
   }
   setValue("description", "");
+  setValue("auditPolicyText", "");
 }

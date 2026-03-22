@@ -2,15 +2,18 @@
 
 import type { Control } from "react-hook-form";
 import { Controller } from "react-hook-form";
+import { useWatch } from "react-hook-form";
 import { X } from "lucide-react";
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
   AGENT_PAYOUT_RAILS,
   AGENT_SPEND_CATEGORY_PRESETS,
 } from "@/lib/agentSpendConstants";
 import type { AgentFormValues } from "@/lib/validators/agent";
+import { compileAuditPolicyText } from "@/lib/auditPolicy";
 import { cn } from "@/lib/utils";
 
 function toggleInList(list: string[], value: string): string[] {
@@ -71,6 +74,12 @@ function TagListField({
 }
 
 export function AgentGovernanceStep({ control }: { control: Control<AgentFormValues> }) {
+  const auditPolicyText = useWatch({
+    control,
+    name: "auditPolicyText",
+  });
+  const compiledAuditPolicy = compileAuditPolicyText(auditPolicyText);
+
   return (
     <div className="space-y-6">
       <div>
@@ -193,6 +202,75 @@ export function AgentGovernanceStep({ control }: { control: Control<AgentFormVal
           </FormItem>
         )}
       />
+
+      <FormField
+        control={control}
+        name="auditPolicyText"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>Auditor instructions</FormLabel>
+            <FormControl>
+              <Textarea
+                rows={5}
+                value={field.value ?? ""}
+                onChange={field.onChange}
+                className="resize-none text-sm"
+                placeholder={`Describe the checks in plain English.\n\nExample: Flag duplicate invoices by vendor + invoice number + amount. Review unmatched vendors. Escalate confidence below 85%. Require citations and invoice evidence. Review rail mismatch and missing due date.`}
+              />
+            </FormControl>
+            <p className="text-caption text-muted-foreground">
+              Custos compiles this into deterministic review checks for invoice and AP-style requests.
+            </p>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
+      <div className="rounded-lg border border-border bg-muted/20 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Compiled audit checks</h3>
+            <p className="text-caption text-muted-foreground mt-1">
+              What the control layer will actually enforce from the verbal policy.
+            </p>
+          </div>
+          <Badge variant={compiledAuditPolicy.enabled ? "secondary" : "outline"}>
+            {compiledAuditPolicy.enabled ? "Auditor enabled" : "No audit policy"}
+          </Badge>
+        </div>
+        {compiledAuditPolicy.enabled ? (
+          <div className="mt-4 space-y-3">
+            {compiledAuditPolicy.minExtractionConfidence != null && (
+              <p className="text-xs text-muted-foreground">
+                Confidence threshold:{" "}
+                <span className="font-medium text-foreground">
+                  {Math.round(compiledAuditPolicy.minExtractionConfidence * 100)}%
+                </span>
+              </p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {compiledAuditPolicy.ruleSet.map((rule) => (
+                <Badge
+                  key={rule.id}
+                  variant={rule.enabled ? "secondary" : "outline"}
+                  className={cn("whitespace-normal py-1 text-left", !rule.enabled && "opacity-60")}
+                >
+                  {rule.label}
+                </Badge>
+              ))}
+            </div>
+            {compiledAuditPolicy.summary.length > 0 && (
+              <p className="text-caption text-muted-foreground">
+                Active: {compiledAuditPolicy.summary.join(", ")}
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="mt-3 text-caption text-muted-foreground">
+            Add a short plain-English policy to turn this agent into an invoice auditor with explicit escalation rules.
+          </p>
+        )}
+      </div>
 
       <div>
         <h3 className="text-sm font-semibold text-foreground">Allowed payout rails</h3>

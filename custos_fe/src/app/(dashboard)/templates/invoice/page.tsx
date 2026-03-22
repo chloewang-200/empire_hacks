@@ -170,13 +170,48 @@ export default function InvoiceAgentPage() {
     });
   }
 
+  const headerAgentName = boundAgent?.name;
+
   return (
     <div className="space-y-8 animate-fade-up">
       <div>
-        <h1 className="text-heading-1 text-foreground">Invoice Agent</h1>
-        <p className="mt-1 text-body-sm text-muted-foreground">
-          Upload an invoice, extract fields, and submit a payment request with purpose, proof, and optional payee
-          override. Full audit trail is on the transaction record.
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Invoice template</p>
+        <h1 className="mt-1 text-heading-1 text-foreground">
+          {headerAgentName ? headerAgentName : urlAgentId ? "Invoice agent" : "Invoice workspace"}
+        </h1>
+        {headerAgentName ? (
+          <p className="mt-1 text-body-sm text-foreground">
+            You’re filing invoice requests as this agent
+            {boundWallet ? (
+              <>
+                {" "}
+                · wallet <span className="font-medium">{boundWallet.name}</span>
+              </>
+            ) : null}
+            .{" "}
+            <Link
+              href={`/agents/${agentId}`}
+              className="font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Agent profile
+            </Link>
+          </p>
+        ) : urlAgentId && !boundAgent ? (
+          <p className="mt-1 text-body-sm text-amber-800 dark:text-amber-200">
+            This link’s agent was not found. Open the invoice flow from{" "}
+            <Link href="/agents" className="font-medium underline underline-offset-4">
+              Agents
+            </Link>{" "}
+            or pick an agent below.
+          </p>
+        ) : (
+          <p className="mt-1 text-body-sm text-muted-foreground">
+            Choose which invoice agent you’re using (or create one), then upload and extract. Requests are attributed
+            to that agent and its wallet.
+          </p>
+        )}
+        <p className="mt-2 text-body-sm text-muted-foreground">
+          Upload an invoice, extract fields, and submit a payment request — full audit trail on the transaction.
         </p>
         <p className="mt-2 text-caption text-muted-foreground">
           <Link href="/payees" className="font-medium text-primary underline-offset-4 hover:underline">
@@ -184,11 +219,20 @@ export default function InvoiceAgentPage() {
           </Link>{" "}
           so vendor strings match your directory (or require a match in wallet policy).
         </p>
-        {(urlAgentId || invoiceAgents.length === 1) && (
+        {boundAgent && urlAgentId && (
           <p className="mt-2 text-caption text-muted-foreground">
-            {urlAgentId
-              ? "Agent and wallet are fixed from your link."
-              : "Using your only Invoice-template agent and its wallet — no need to pick them below."}
+            Opened from this agent’s link — wallet and identity stay tied to it.
+          </p>
+        )}
+        {boundAgent && !urlAgentId && invoiceAgents.length === 1 && (
+          <p className="mt-2 text-caption text-muted-foreground">
+            This workspace has one invoice agent — it’s selected automatically.
+          </p>
+        )}
+        {boundAgent && !urlAgentId && invoiceAgents.length > 1 && (
+          <p className="mt-2 text-caption text-muted-foreground">
+            Several invoice agents exist — pick which one you’re using in the form below (title updates when you
+            change it).
           </p>
         )}
         {invoiceAgents.length === 0 && (

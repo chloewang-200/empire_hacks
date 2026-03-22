@@ -84,6 +84,7 @@ export function AgentFormDialog({
       approvalThreshold: undefined,
       maxTransactionAmount: undefined,
       requireApprovedPayee: false,
+      auditPolicyText: "",
       vendorAllowlist: [],
       vendorDenylist: [],
       restrictedVendors: [],
@@ -116,6 +117,7 @@ export function AgentFormDialog({
         approvalThreshold: undefined,
         maxTransactionAmount: undefined,
         requireApprovedPayee: false,
+        auditPolicyText: "",
         vendorAllowlist: [],
         vendorDenylist: [],
         restrictedVendors: [],
@@ -200,6 +202,9 @@ export function AgentFormDialog({
       allowedCategories: values.allowedCategories ?? [],
       allowedPayoutRails: rails,
       allowedPaymentMethods: rails,
+      settings: {
+        auditPolicyText: values.auditPolicyText?.trim() || "",
+      },
     };
     createMutation.mutate(body);
   }

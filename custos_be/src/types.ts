@@ -21,6 +21,31 @@ export interface WalletPolicy {
   allowedPayoutRails?: string[];
 }
 
+export interface CompiledAuditRule {
+  id: string;
+  label: string;
+  enabled: boolean;
+  action: "review";
+  detail: string;
+}
+
+export interface CompiledAuditPolicy {
+  sourceText: string;
+  enabled: boolean;
+  minExtractionConfidence: number | null;
+  reviewOnDuplicateInvoice: boolean;
+  reviewOnUnmatchedVendor: boolean;
+  reviewOnRailMismatch: boolean;
+  reviewOnMissingEvidence: boolean;
+  reviewOnMissingCitations: boolean;
+  reviewOnMissingInvoiceNumber: boolean;
+  reviewOnMissingDueDate: boolean;
+  reviewOnAmountAnomaly: boolean;
+  amountAnomalyMultiplier: number;
+  ruleSet: CompiledAuditRule[];
+  summary: string[];
+}
+
 export type PolicyResult =
   | "within_policy"
   | "over_limit"

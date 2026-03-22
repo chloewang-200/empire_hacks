@@ -54,6 +54,7 @@ export default function AgentEditPage() {
           approvalThreshold: agent.approvalThreshold ?? undefined,
           maxTransactionAmount: agent.maxTransactionAmount ?? undefined,
           requireApprovedPayee: agent.requireApprovedPayee ?? false,
+          auditPolicyText: agent.settings?.auditPolicyText ?? "",
           vendorAllowlist: agent.vendorAllowlist ?? [],
           vendorDenylist: agent.vendorDenylist ?? [],
           restrictedVendors: agent.restrictedVendors ?? [],

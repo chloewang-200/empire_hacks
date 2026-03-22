@@ -31,6 +31,36 @@ export interface AgentTemplate {
   permissionsNeeded?: string[];
 }
 
+export interface CompiledAuditRule {
+  id: string;
+  label: string;
+  enabled: boolean;
+  action: "review";
+  detail: string;
+}
+
+export interface CompiledAuditPolicy {
+  sourceText: string;
+  enabled: boolean;
+  minExtractionConfidence: number | null;
+  reviewOnDuplicateInvoice: boolean;
+  reviewOnUnmatchedVendor: boolean;
+  reviewOnRailMismatch: boolean;
+  reviewOnMissingEvidence: boolean;
+  reviewOnMissingCitations: boolean;
+  reviewOnMissingInvoiceNumber: boolean;
+  reviewOnMissingDueDate: boolean;
+  reviewOnAmountAnomaly: boolean;
+  amountAnomalyMultiplier: number;
+  ruleSet: CompiledAuditRule[];
+  summary: string[];
+}
+
+export interface AgentSettings extends Record<string, unknown> {
+  auditPolicyText?: string;
+  auditPolicy?: CompiledAuditPolicy;
+}
+
 export interface Agent {
   id: string;
   name: string;
@@ -71,7 +101,7 @@ export interface Agent {
   allowedCategories?: string[];
   /** Vendor substring hits are blocked for this agent (merged with wallet restricted list) */
   restrictedVendors?: string[];
-  settings?: Record<string, unknown>;
+  settings?: AgentSettings;
   metadata?: Record<string, unknown>;
   createdByUserId?: string;
 }

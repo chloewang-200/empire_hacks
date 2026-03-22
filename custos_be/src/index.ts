@@ -28,6 +28,7 @@ import { executeAutomatedPayout } from "./payoutExecution.js";
 import { stripe, stripeEnabled } from "./stripe.js";
 import { ensureStripeCustomerForWallet } from "./stripeWallet.js";
 import { runEventProductionPlan } from "./eventProductionPlan.js";
+import { normalizeAgentSettings } from "./auditPolicy.js";
 import { z } from "zod";
 
 function parseJsonArray<T = Record<string, unknown>>(value: string | null | undefined): T[] {
@@ -36,6 +37,18 @@ function parseJsonArray<T = Record<string, unknown>>(value: string | null | unde
     return Array.isArray(parsed) ? (parsed as T[]) : [];
   } catch {
     return [];
+  }
+}
+
+function parseJsonObject<T = Record<string, unknown>>(value: string | null | undefined): T {
+  try {
+    const parsed = JSON.parse(value ?? "{}") as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as T;
+    }
+    return {} as T;
+  } catch {
+    return {} as T;
   }
 }
 
@@ -609,7 +622,7 @@ app.post("/api/agents", async (req, reply) => {
       allowedPayoutRailsJson: JSON.stringify(body.allowedPayoutRails ?? []),
       allowedCategoriesJson: JSON.stringify(body.allowedCategories ?? []),
       restrictedVendorsJson: JSON.stringify(body.restrictedVendors ?? []),
-      settingsJson: JSON.stringify(body.settings ?? {}),
+      settingsJson: JSON.stringify(normalizeAgentSettings(body.settings)),
       metadataJson: JSON.stringify(body.metadata ?? {}),
       createdByUserId: user.id,
     },
@@ -639,6 +652,7 @@ app.patch("/api/agents/:id", async (req, reply) => {
   const agent = await prisma.agent.findFirst({ where: { id, workspaceId: ws.id } });
   if (!agent) return reply.status(404).send({ message: "Not found" });
   const body = agentPatchBodySchema.parse(req.body);
+  const existingSettings = parseJsonObject<Record<string, unknown>>(agent.settingsJson);
   const walletId =
     body.assignedWalletId != null
       ? (
@@ -717,7 +731,10 @@ app.patch("/api/agents/:id", async (req, reply) => {
         body.restrictedVendors === undefined
           ? undefined
           : JSON.stringify(body.restrictedVendors ?? []),
-      settingsJson: body.settings === undefined ? undefined : JSON.stringify(body.settings ?? {}),
+      settingsJson:
+        body.settings === undefined
+          ? undefined
+          : JSON.stringify(normalizeAgentSettings(body.settings, existingSettings)),
       metadataJson: body.metadata === undefined ? undefined : JSON.stringify(body.metadata ?? {}),
     },
     include: agentInclude,

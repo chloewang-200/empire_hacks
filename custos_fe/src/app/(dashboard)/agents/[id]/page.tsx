@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getAgent } from "@/lib/api/agents";
 import { AgentStatusBadge } from "@/components/status/StatusBadge";
 import { ApiKeyRevealCard } from "@/components/agents/ApiKeyRevealCard";
+import { compileAuditPolicyText } from "@/lib/auditPolicy";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
 export default function AgentDetailPage() {
@@ -29,6 +30,8 @@ export default function AgentDetailPage() {
       </div>
     );
   }
+
+  const auditPolicy = compileAuditPolicyText(agent.settings?.auditPolicyText);
 
   return (
     <div className="space-y-6 animate-fade-up">
@@ -109,6 +112,29 @@ export default function AgentDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {auditPolicy.enabled && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Auditor policy</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-body-sm text-muted-foreground">{auditPolicy.sourceText}</p>
+            <div className="flex flex-wrap gap-2">
+              {auditPolicy.ruleSet
+                .filter((rule) => rule.enabled)
+                .map((rule) => (
+                  <span
+                    key={rule.id}
+                    className="inline-flex items-center rounded-md border border-border bg-muted px-2 py-0.5 text-xs"
+                  >
+                    {rule.label}
+                  </span>
+                ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <ApiKeyRevealCard agentId={agent.id} />
 

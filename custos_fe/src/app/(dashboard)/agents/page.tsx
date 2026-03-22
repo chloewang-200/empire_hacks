@@ -129,6 +129,13 @@ export default function AgentsPage() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => router.push(`/agents/${agent.id}`)}>View</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => router.push(`/agents/${agent.id}/edit`)}>Edit</DropdownMenuItem>
+                          {agent.templateType === "invoice" && (
+                            <DropdownMenuItem asChild>
+                              <Link href={`/templates/invoice?agentId=${encodeURIComponent(agent.id)}`}>
+                                Invoice upload (this agent)
+                              </Link>
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem asChild>
                             <Link href={`/transactions?agentId=${agent.id}`}>View transactions</Link>
                           </DropdownMenuItem>

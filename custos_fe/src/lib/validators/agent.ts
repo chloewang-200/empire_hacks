@@ -15,6 +15,7 @@ export const agentFormSchema = z.object({
   approvalThreshold: z.number().min(0).optional(),
   maxTransactionAmount: z.number().min(0).optional(),
   requireApprovedPayee: z.boolean().optional(),
+  auditPolicyText: z.string().optional(),
   vendorAllowlist: z.array(z.string()),
   vendorDenylist: z.array(z.string()),
   restrictedVendors: z.array(z.string()),
