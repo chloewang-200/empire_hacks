@@ -28,6 +28,7 @@ import { executeAutomatedPayout } from "./payoutExecution.js";
 import { stripe, stripeEnabled } from "./stripe.js";
 import { ensureStripeCustomerForWallet } from "./stripeWallet.js";
 import { runEventProductionPlan } from "./eventProductionPlan.js";
+import { runInvoiceChatTurn } from "./invoiceChatTurn.js";
 import { normalizeAgentSettings } from "./auditPolicy.js";
 import { z } from "zod";
 
@@ -255,6 +256,54 @@ function appendAuditEvent(
     detail: event.detail,
   });
   return JSON.stringify(audit);
+}
+
+const txDetailInclude = { agent: true, wallet: true, payee: true } as const;
+
+/**
+ * After a human marks a transaction approved: optionally run Stripe/Venmo payout (when wallet
+ * policy.autoExecutePayout is true). If auto-payout is off, append an audit note so dashboards
+ * are not mistaken for a silent Stripe failure.
+ */
+async function afterHumanApproveMaybePayout(txId: string): Promise<void> {
+  const row = await prisma.transaction.findFirst({
+    where: { id: txId },
+    include: txDetailInclude,
+  });
+  if (!row || row.status !== "approved") return;
+
+  const policy = parseWalletPolicy(row.wallet.policyJson);
+  const ps = row.payoutStatus ?? "";
+  if (ps === "succeeded" || ps === "processing") return;
+
+  if (policy.autoExecutePayout) {
+    await executeAutomatedPayout({
+      transactionId: row.id,
+      walletId: row.walletId,
+      amountCents: row.amountCents,
+      currency: row.currency,
+      railType: row.railType,
+      stripeConnectAccountId: row.payee?.stripeConnectAccountId ?? null,
+      venmoHandle: row.recipient?.trim() || null,
+      fundingModel: row.wallet.fundingModel ?? "prefund",
+      stripeCustomerId: row.wallet.stripeCustomerId,
+      stripeDefaultPaymentMethodId: row.wallet.stripeDefaultPaymentMethodId,
+    });
+    return;
+  }
+
+  await prisma.transaction.update({
+    where: { id: txId },
+    data: {
+      auditJson: appendAuditEvent(row.auditJson, {
+        type: "payout",
+        action: "Payout not attempted (autoExecutePayout off)",
+        actor: "system",
+        detail:
+          'Human approval recorded in Custos only. Enable "Attempt payout after approval" on this wallet to create Stripe transfers (prefund) or destination charges (card on file), and ensure the payee has a Connect account id when required.',
+      }),
+    },
+  });
 }
 
 function humanizePolicyResult(policyResult: string | null | undefined): string {
@@ -1788,23 +1837,42 @@ app.patch("/api/admin/transactions/:id/review", async (req, reply) => {
   const tx = await prisma.transaction.findUnique({ where: { id } });
   if (!tx) return reply.status(404).send({ message: "Not found" });
 
+  const reviewHeldPolicy =
+    tx.policyResult === "needs_manual_approval" ||
+    tx.policyResult === "payee_not_matched" ||
+    tx.policyResult === "missing_proof";
+  const nextPolicyResult =
+    body.decision === "approve" && tx.status === "pending_review" && reviewHeldPolicy
+      ? "within_policy"
+      : tx.policyResult;
+
   const updated = await prisma.transaction.update({
     where: { id },
     data: {
       status: body.decision === "approve" ? "approved" : "blocked",
       reviewState: body.decision === "approve" ? "approved" : "rejected",
+      ...(nextPolicyResult !== tx.policyResult ? { policyResult: nextPolicyResult } : {}),
       auditJson: appendAuditEvent(tx.auditJson, {
         action: `Human review: ${body.decision}`,
         detail: body.note,
       }),
     },
-    include: { agent: true, wallet: true, payee: true },
+    include: txDetailInclude,
   });
 
+  let finalRow = updated;
+  if (body.decision === "approve") {
+    await afterHumanApproveMaybePayout(id);
+    finalRow = (await prisma.transaction.findFirst({
+      where: { id },
+      include: txDetailInclude,
+    }))!;
+  }
+
   return toAdminTransactionJson({
-    ...(transactionToJson(updated) as Record<string, unknown>),
-    clientId: updated.workspaceId,
-    updatedAt: updated.updatedAt.toISOString(),
+    ...(transactionToJson(finalRow) as Record<string, unknown>),
+    clientId: finalRow.workspaceId,
+    updatedAt: finalRow.updatedAt.toISOString(),
   });
 });
 
@@ -1946,11 +2014,23 @@ app.patch("/api/transactions/:id/review", async (req, reply) => {
     actor: user.email,
     detail: body.note,
   });
+  const reviewHeldPolicy =
+    tx.policyResult === "needs_manual_approval" ||
+    tx.policyResult === "payee_not_matched" ||
+    tx.policyResult === "missing_proof";
+  const nextPolicyResult =
+    body.decision === "approve" &&
+    tx.status === "pending_review" &&
+    reviewHeldPolicy
+      ? "within_policy"
+      : tx.policyResult;
+
   const updated = await prisma.transaction.update({
     where: { id },
     data: {
       status,
       reviewState,
+      ...(nextPolicyResult !== tx.policyResult ? { policyResult: nextPolicyResult } : {}),
       auditJson: JSON.stringify(audit),
     },
     include: { agent: true, wallet: true, payee: true },
@@ -1958,28 +2038,11 @@ app.patch("/api/transactions/:id/review", async (req, reply) => {
 
   let finalRow = updated;
   if (body.decision === "approve") {
-    const policy = parseWalletPolicy(updated.wallet.policyJson);
-    const ps = updated.payoutStatus;
-    const shouldPayout =
-      policy.autoExecutePayout && ps !== "succeeded" && ps !== "processing";
-    if (shouldPayout) {
-      await executeAutomatedPayout({
-        transactionId: updated.id,
-        walletId: updated.walletId,
-        amountCents: updated.amountCents,
-        currency: updated.currency,
-        railType: updated.railType,
-        stripeConnectAccountId: updated.payee?.stripeConnectAccountId ?? null,
-        venmoHandle: updated.recipient?.trim() || null,
-        fundingModel: updated.wallet.fundingModel ?? "prefund",
-        stripeCustomerId: updated.wallet.stripeCustomerId,
-        stripeDefaultPaymentMethodId: updated.wallet.stripeDefaultPaymentMethodId,
-      });
-      finalRow = (await prisma.transaction.findFirst({
-        where: { id },
-        include: { agent: true, wallet: true, payee: true },
-      }))!;
-    }
+    await afterHumanApproveMaybePayout(id);
+    finalRow = (await prisma.transaction.findFirst({
+      where: { id },
+      include: txDetailInclude,
+    }))!;
   }
 
   return transactionToJson(finalRow);
@@ -2030,6 +2093,12 @@ app.get("/api/templates", async () => {
         description: "Reconcile event budgets and vendor lines into governed payout requests",
         status: "available",
       },
+      {
+        id: "invoice_chat",
+        name: "Invoice Copilot (chat)",
+        description: "Upload an invoice image and refine extraction through conversation before filing payment",
+        status: "available",
+      },
     ],
   };
 });
@@ -2039,6 +2108,15 @@ app.get("/api/templates/invoice", async () => ({
   name: "Invoice",
   description: "Upload invoice screenshots; extract fields and submit spend requests.",
   expectedInputs: ["screenshot"],
+  permissionsNeeded: ["spend"],
+}));
+
+app.get("/api/templates/invoice_chat", async () => ({
+  id: "invoice_chat",
+  name: "Invoice Copilot (chat)",
+  description:
+    "Conversational invoice workspace: image upload, chat to correct fields, then submit through the same policy and audit stack.",
+  expectedInputs: ["invoice image", "optional chat corrections"],
   permissionsNeeded: ["spend"],
 }));
 
@@ -2088,6 +2166,38 @@ app.post("/api/invoice/upload", async (req, reply) => {
     data: { id, path, mimeType: mp.mimetype },
   });
   return { fileId: id, url: undefined };
+});
+
+app.get("/api/invoice/file/:fileId", async (req, reply) => {
+  const user = await requireUser(req.headers.authorization);
+  const ws = await getWorkspaceForUser(user.id);
+  if (!ws) return reply.status(404).send({ message: "No workspace" });
+  const { fileId } = req.params as { fileId: string };
+  if (!/^inv_\d+$/.test(fileId)) {
+    return reply.status(400).send({ message: "Invalid file id" });
+  }
+  const referenced = await prisma.transaction.findFirst({
+    where: {
+      workspaceId: ws.id,
+      OR: [{ evidenceJson: { contains: fileId } }, { contextJson: { contains: fileId } }],
+    },
+    select: { id: true },
+  });
+  if (!referenced) {
+    return reply.status(403).send({ message: "File not linked to this workspace" });
+  }
+  const file = await prisma.uploadedFile.findUnique({ where: { id: fileId } });
+  if (!file) return reply.status(404).send({ message: "File not found" });
+  try {
+    const buf = await readFile(file.path);
+    const mime = file.mimeType?.trim() || "application/octet-stream";
+    return reply
+      .header("Cache-Control", "private, max-age=300")
+      .type(mime)
+      .send(buf);
+  } catch {
+    return reply.status(404).send({ message: "File missing on disk" });
+  }
 });
 
   function mockInvoiceExtraction(fileId: string, memoExtra?: string) {
@@ -2141,6 +2251,28 @@ app.post("/api/invoice/extract", async (req, reply) => {
   }
 
   return mockInvoiceExtraction(body.fileId);
+});
+
+app.post("/api/invoice/chat-turn", async (req, reply) => {
+  const user = await requireUser(req.headers.authorization);
+  const ws = await getWorkspaceForUser(user.id);
+  if (!ws) return reply.status(404).send({ message: "No workspace" });
+  const body = z
+    .object({
+      messages: z.array(
+        z.object({
+          role: z.enum(["user", "assistant"]),
+          content: z.string().max(12000),
+        })
+      ),
+      extraction: z.record(z.unknown()).nullable().optional(),
+    })
+    .parse(req.body);
+  const result = await runInvoiceChatTurn({
+    messages: body.messages,
+    extraction: body.extraction ?? null,
+  });
+  return result;
 });
 
 const port = Number(process.env.PORT ?? 4000);

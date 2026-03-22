@@ -74,7 +74,7 @@ export function TransactionStatusBadge({
   );
 }
 
-const policyPass = new Set(["within_policy"]);
+const policyPass = new Set(["within_policy", "cleared_by_human_review"]);
 const policyWarn = new Set([
   "needs_manual_approval",
   "payee_not_matched",
@@ -98,7 +98,8 @@ export function PolicyResultBadge({
   result: string;
   className?: string;
 }) {
-  const label = result.replace(/_/g, " ");
+  const label =
+    result === "cleared_by_human_review" ? "Cleared (human review)" : result.replace(/_/g, " ");
   const variant = policyPass.has(result) ? "success" : policyWarn.has(result) ? "warning" : "destructive";
   return (
     <Badge variant={variant} className={cn("capitalize", className)}>

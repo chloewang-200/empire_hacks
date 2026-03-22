@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, CalendarRange, FileText } from "lucide-react";
+import { ArrowLeft, CalendarRange, FileText, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -53,6 +53,14 @@ export default function AgentDetailPage() {
             <Link href={`/templates/invoice?agentId=${encodeURIComponent(agent.id)}`}>
               <FileText className="mr-2 h-4 w-4" />
               Invoice upload / OCR
+            </Link>
+          </Button>
+        )}
+        {agent.templateType === "invoice_chat" && (
+          <Button asChild>
+            <Link href={`/templates/invoice-chat?agentId=${encodeURIComponent(agent.id)}`}>
+              <MessageSquare className="mr-2 h-4 w-4" />
+              Invoice Copilot chat
             </Link>
           </Button>
         )}

@@ -19,6 +19,7 @@ import { formatCurrency } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { getWallets } from "@/lib/api/wallets";
 import { getAgents } from "@/lib/api/agents";
+import { buildInvoiceTrustFields } from "@/lib/invoiceSubmissionTrust";
 
 export default function InvoiceAgentPage() {
   const searchParams = useSearchParams();
@@ -146,6 +147,14 @@ export default function InvoiceAgentPage() {
       return;
     }
     const wallet = wallets.find((w) => w.id === walletId);
+    const trust = buildInvoiceTrustFields({
+      extraction,
+      purpose: purpose.trim(),
+      fileId,
+      originalFilename: file?.name,
+      payeeOverrideId,
+      agentName: boundAgent?.name,
+    });
     requestMutation.mutate({
       agentId,
       walletId,
@@ -163,10 +172,14 @@ export default function InvoiceAgentPage() {
         dueDate: extraction.dueDate,
         extractionConfidence: extraction.confidence,
         originalFilename: file?.name,
+        trustBrief:
+          "Invoice template submission with default citations (workflow, evidence, purpose, payee rules) and agentDecision trace.",
       },
       evidence: fileId
         ? [{ type: "invoice", fileId, filename: file?.name, ...extraction }]
         : undefined,
+      citedRules: trust.citedRules,
+      agentDecision: trust.agentDecision,
     });
   }
 

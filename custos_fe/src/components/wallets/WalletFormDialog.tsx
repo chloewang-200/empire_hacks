@@ -302,9 +302,11 @@ export function WalletFormDialog({
                   <div className="space-y-1 leading-none">
                     <FormLabel className="text-sm font-medium">Auto-execute payout</FormLabel>
                     <p className="text-caption text-muted-foreground">
-                      When policy approves, attempt payout: prefund wallets need balance + Stripe transfer; Connect
-                      destination wallets charge the saved card to the payee&apos;s{" "}
-                      <code className="text-xs">acct_…</code>. Venmo uses PayPal when configured.
+                      When a transaction is approved (including after human review), Custos will
+                      call Stripe or Venmo. If this stays off, approval only updates Custos — nothing appears in
+                      Stripe. Prefund: platform balance + transfer to payee{" "}
+                      <code className="text-xs">acct_…</code>; Connect destination: charge saved card with{" "}
+                      <code className="text-xs">transfer_data</code>.
                     </p>
                   </div>
                 </FormItem>

@@ -136,6 +136,13 @@ export default function AgentsPage() {
                               </Link>
                             </DropdownMenuItem>
                           )}
+                          {agent.templateType === "invoice_chat" && (
+                            <DropdownMenuItem asChild>
+                              <Link href={`/templates/invoice-chat?agentId=${encodeURIComponent(agent.id)}`}>
+                                Invoice Copilot chat
+                              </Link>
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem asChild>
                             <Link href={`/transactions?agentId=${agent.id}`}>View transactions</Link>
                           </DropdownMenuItem>

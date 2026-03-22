@@ -27,6 +27,18 @@ export function applyStarterTemplateFields(
     );
     return;
   }
+  if (templateId === "invoice_chat") {
+    setValue(
+      "description",
+      "Chat-first invoice assistant: operators upload images and negotiate fields in natural language before filing spend."
+    );
+    setValue("allowedCategories", []);
+    setValue(
+      "auditPolicyText",
+      "Same invoice audit rules as the classic template: duplicates, unmatched vendors, confidence, citations, evidence, rail and due date checks."
+    );
+    return;
+  }
   setValue("description", "");
   setValue("auditPolicyText", "");
 }

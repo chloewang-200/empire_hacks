@@ -55,6 +55,10 @@ export default function TemplatesPage() {
                   <Button asChild>
                     <Link href="/templates/invoice">Configure</Link>
                   </Button>
+                ) : t.status === "available" && t.id === "invoice_chat" ? (
+                  <Button asChild>
+                    <Link href="/templates/invoice-chat">Open</Link>
+                  </Button>
                 ) : (
                   <Button disabled variant="outline">
                     Configure

@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { getTransactions } from "@/lib/api/transactions";
+import { effectivePolicyDisplay, payoutStatusLabel } from "@/lib/transactionDisplay";
 import { TransactionStatusBadge } from "@/components/status/StatusBadge";
 import { PolicyResultBadge } from "@/components/status/StatusBadge";
 import { EmptyState } from "@/components/empty-state/EmptyState";
@@ -127,7 +128,10 @@ function TransactionsPageContent() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {transactions.map((tx) => (
+              {transactions.map((tx) => {
+                const payLbl = payoutStatusLabel(tx);
+                const policyDisp = effectivePolicyDisplay(tx);
+                return (
                 <TableRow
                   key={tx.id}
                   className="cursor-pointer hover:bg-muted/50"
@@ -144,13 +148,25 @@ function TransactionsPageContent() {
                     {formatCurrency(tx.amount, tx.currency)}
                   </TableCell>
                   <TableCell>
-                    <TransactionStatusBadge status={tx.status} />
+                    <div className="flex flex-col gap-0.5 items-end sm:items-start">
+                      <TransactionStatusBadge status={tx.status} />
+                      {payLbl && (
+                        <span className="text-caption text-muted-foreground max-w-[14rem] text-right sm:text-left">
+                          {payLbl}
+                        </span>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
-                    {tx.policyResult ? (
-                      <PolicyResultBadge result={tx.policyResult} />
-                    ) : (
+                    {!policyDisp ? (
                       "—"
+                    ) : (
+                      <div className="flex flex-col gap-1">
+                        <PolicyResultBadge result={policyDisp.result} />
+                        {policyDisp.subtitle && (
+                          <span className="text-caption text-muted-foreground">{policyDisp.subtitle}</span>
+                        )}
+                      </div>
                     )}
                   </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
@@ -173,7 +189,8 @@ function TransactionsPageContent() {
                     </DropdownMenu>
                   </TableCell>
                 </TableRow>
-              ))}
+              );
+              })}
             </TableBody>
           </Table>
         )}

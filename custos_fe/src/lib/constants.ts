@@ -15,6 +15,7 @@ export const AGENT_ROLES = [
 export const AGENT_TEMPLATE_TYPES = [
   { value: "event_production", label: "Event production payouts" },
   { value: "invoice", label: "Invoice Agent" },
+  { value: "invoice_chat", label: "Invoice Copilot (chat)" },
   { value: "procurement", label: "Procurement Agent" },
   { value: "travel", label: "Travel Agent" },
   { value: "reimbursement", label: "Reimbursement Agent" },
@@ -34,6 +35,12 @@ export const AGENT_STARTER_TEMPLATES = [
     value: "invoice",
     label: "Invoice Agent",
     description: "Upload invoices and submit payment requests with extraction.",
+  },
+  {
+    value: "invoice_chat",
+    label: "Invoice Copilot (chat)",
+    description:
+      "Conversational invoice flow: drop an image, refine fields in chat, then submit the same governed payment request.",
   },
   {
     value: "procurement",

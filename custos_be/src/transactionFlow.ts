@@ -289,7 +289,10 @@ export async function submitAgentTransactionRequest(
   });
 
   const isInvoiceRequest =
-    body.sourceKind === "invoice_upload" || fullAgent.templateType === "invoice";
+    body.sourceKind === "invoice_upload" ||
+    body.sourceKind === "invoice_chat" ||
+    fullAgent.templateType === "invoice" ||
+    fullAgent.templateType === "invoice_chat";
   let invoiceAudit:
     | {
         checks: { check: string; result: "pass" | "fail"; detail?: string }[];
@@ -300,7 +303,7 @@ export async function submitAgentTransactionRequest(
     const recentInvoicesRaw = await prisma.transaction.findMany({
       where: {
         workspaceId: agent.workspaceId,
-        sourceKind: "invoice_upload",
+        sourceKind: { in: ["invoice_upload", "invoice_chat"] },
         createdAt: { lt: new Date() },
       },
       select: {

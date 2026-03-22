@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Building2 } from "lucide-react";
+import { Plus, Trash2, Building2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -17,7 +17,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getPayees, createPayee, deletePayee } from "@/lib/api/payees";
+import { getPayees, createPayee, deletePayee, updatePayee } from "@/lib/api/payees";
+import type { ApprovedPayee } from "@/lib/types";
 import {
   Select,
   SelectContent,
@@ -47,6 +48,26 @@ export default function PayeesPage() {
   const [stripeConnectAccountId, setStripeConnectAccountId] = useState("");
   const [notes, setNotes] = useState("");
 
+  const [editingPayee, setEditingPayee] = useState<ApprovedPayee | null>(null);
+  const [editDisplayName, setEditDisplayName] = useState("");
+  const [editLegalName, setEditLegalName] = useState("");
+  const [editAliases, setEditAliases] = useState("");
+  const [editDefaultRail, setEditDefaultRail] = useState("merchant_card");
+  const [editPaymentInstructions, setEditPaymentInstructions] = useState("");
+  const [editStripeConnectAccountId, setEditStripeConnectAccountId] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+
+  useEffect(() => {
+    if (!editingPayee) return;
+    setEditDisplayName(editingPayee.displayName);
+    setEditLegalName(editingPayee.legalName ?? "");
+    setEditAliases(editingPayee.aliases.join(", "));
+    setEditDefaultRail(editingPayee.defaultRail);
+    setEditPaymentInstructions(editingPayee.paymentInstructions ?? "");
+    setEditStripeConnectAccountId(editingPayee.stripeConnectAccountId ?? "");
+    setEditNotes(editingPayee.notes ?? "");
+  }, [editingPayee]);
+
   const { data: payees, isLoading } = useQuery({
     queryKey: ["payees"],
     queryFn: getPayees,
@@ -70,6 +91,29 @@ export default function PayeesPage() {
   const deleteMut = useMutation({
     mutationFn: deletePayee,
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["payees"] }),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: () => {
+      if (!editingPayee) throw new Error("No payee");
+      const aliasList = editAliases
+        .split(/[,\n]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      return updatePayee(editingPayee.id, {
+        displayName: editDisplayName.trim(),
+        legalName: editLegalName.trim() || null,
+        aliases: aliasList,
+        defaultRail: editDefaultRail,
+        paymentInstructions: editPaymentInstructions.trim() || null,
+        stripeConnectAccountId: editStripeConnectAccountId.trim() || null,
+        notes: editNotes.trim() || null,
+      });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["payees"] });
+      setEditingPayee(null);
+    },
   });
 
   function handleCreate() {
@@ -131,17 +175,27 @@ export default function PayeesPage() {
             <CardHeader className="pb-2">
               <div className="flex items-start justify-between gap-2">
                 <CardTitle className="text-base">{p.displayName}</CardTitle>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="shrink-0 text-destructive hover:text-destructive"
-                  aria-label={`Delete ${p.displayName}`}
-                  onClick={() => {
-                    if (confirm(`Remove payee “${p.displayName}”?`)) deleteMut.mutate(p.id);
-                  }}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <div className="flex shrink-0 gap-0.5">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Edit ${p.displayName}`}
+                    onClick={() => setEditingPayee(p)}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-destructive hover:text-destructive"
+                    aria-label={`Delete ${p.displayName}`}
+                    onClick={() => {
+                      if (confirm(`Remove payee “${p.displayName}”?`)) deleteMut.mutate(p.id);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
               {p.legalName && <CardDescription>{p.legalName}</CardDescription>}
             </CardHeader>
@@ -247,8 +301,9 @@ export default function PayeesPage() {
                 className="font-mono text-sm"
               />
               <p className="mt-1 text-caption text-muted-foreground">
-                Required on the payee (or pass <code className="text-xs">stripeConnectAccountId</code> on the payment
-                API) when using auto payout to Stripe.
+                Required for auto payout: a real <code className="text-xs">acct_</code> from your Stripe Connect
+                accounts (test mode works). Fake IDs are rejected by Stripe when Custos creates a transfer. You can add
+                or change this later with Edit on the payee card.
               </p>
             </div>
             <div>
@@ -267,6 +322,104 @@ export default function PayeesPage() {
               {createMut.isPending ? "Saving…" : "Save payee"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editingPayee} onOpenChange={(o) => !o && setEditingPayee(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit approved payee</DialogTitle>
+          </DialogHeader>
+          {editingPayee && (
+            <>
+              <div className="space-y-3 py-2">
+                <div>
+                  <Label htmlFor="edn">Display name *</Label>
+                  <Input
+                    id="edn"
+                    value={editDisplayName}
+                    onChange={(e) => setEditDisplayName(e.target.value)}
+                    placeholder="e.g. Acme Cloud Services"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="eln">Legal name</Label>
+                  <Input
+                    id="eln"
+                    value={editLegalName}
+                    onChange={(e) => setEditLegalName(e.target.value)}
+                    placeholder="Optional"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="eal">Alternate names (comma or newline)</Label>
+                  <Textarea
+                    id="eal"
+                    value={editAliases}
+                    onChange={(e) => setEditAliases(e.target.value)}
+                    rows={2}
+                    className="resize-none"
+                  />
+                </div>
+                <div>
+                  <Label>Default payout rail</Label>
+                  <Select value={editDefaultRail} onValueChange={setEditDefaultRail}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {RAILS.map((r) => (
+                        <SelectItem key={r.value} value={r.value}>
+                          {r.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="epi">How to pay (masked is fine)</Label>
+                  <Textarea
+                    id="epi"
+                    value={editPaymentInstructions}
+                    onChange={(e) => setEditPaymentInstructions(e.target.value)}
+                    rows={2}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="estripe">Stripe Connect account</Label>
+                  <Input
+                    id="estripe"
+                    value={editStripeConnectAccountId}
+                    onChange={(e) => setEditStripeConnectAccountId(e.target.value)}
+                    placeholder="acct_… from Stripe Dashboard (Connect → Accounts)"
+                    className="font-mono text-sm"
+                  />
+                  <p className="mt-1 text-caption text-muted-foreground">
+                    Use a real <code className="text-xs">acct_</code> from your Stripe account (test mode is fine).
+                    Random or made-up IDs will not work — Stripe validates them when Custos runs a transfer.
+                  </p>
+                </div>
+                <div>
+                  <Label htmlFor="eno">Internal notes</Label>
+                  <Input id="eno" value={editNotes} onChange={(e) => setEditNotes(e.target.value)} />
+                </div>
+              </div>
+              {updateMut.isError && (
+                <p className="text-sm text-destructive">{(updateMut.error as Error).message}</p>
+              )}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setEditingPayee(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => updateMut.mutate()}
+                  disabled={updateMut.isPending || !editDisplayName.trim()}
+                >
+                  {updateMut.isPending ? "Saving…" : "Save changes"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>

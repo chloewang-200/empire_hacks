@@ -16,6 +16,13 @@ const TEMPLATES: AgentTemplate[] = [
     status: "available",
   },
   {
+    id: "invoice_chat",
+    name: "Invoice Copilot (chat)",
+    description:
+      "Chat with an invoice assistant: share an image, refine fields in conversation, then submit the same audited payment request.",
+    status: "available",
+  },
+  {
     id: "procurement",
     name: "Procurement Agent",
     description: "Request and track procurement spend against wallet policies.",

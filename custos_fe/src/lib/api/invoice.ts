@@ -39,3 +39,25 @@ export async function extractInvoice(fileId: string): Promise<InvoiceExtractionR
   }
   return res.json() as Promise<InvoiceExtractionResult>;
 }
+
+export type InvoiceChatMessage = { role: "user" | "assistant"; content: string };
+
+export async function invoiceChatTurn(body: {
+  messages: InvoiceChatMessage[];
+  extraction: Record<string, unknown> | null;
+}): Promise<{ reply: string; patch: Record<string, unknown> }> {
+  const res = await fetch("/api/invoice/chat-turn", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...custosAuthHeader(),
+    },
+    body: JSON.stringify(body),
+    credentials: "include",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error((err as { message?: string }).message ?? res.statusText);
+  }
+  return res.json() as Promise<{ reply: string; patch: Record<string, unknown> }>;
+}

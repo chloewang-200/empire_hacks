@@ -14,6 +14,8 @@ import { TransactionStatusBadge } from "@/components/status/StatusBadge";
 import { formatDateTime } from "@/lib/utils";
 import { reviewTransaction } from "@/lib/api/transactions";
 import type { CitedRule, Transaction } from "@/lib/types";
+import { effectivePolicyDisplay, payoutStatusLabel } from "@/lib/transactionDisplay";
+import { EvidenceFilePreview } from "@/components/transactions/EvidenceFilePreview";
 
 const auditTypeLabel: Record<string, string> = {
   request: "Request",
@@ -38,6 +40,8 @@ function ContextJson({ value }: { value: Record<string, unknown> }) {
 
 export function TransactionAuditPanel({ tx }: { tx: Transaction }) {
   const needsAttention = tx.status === "pending_review" || tx.status === "blocked";
+  const policyDisp = effectivePolicyDisplay(tx);
+  const payoutLbl = payoutStatusLabel(tx);
 
   return (
     <div className="space-y-6">
@@ -65,13 +69,25 @@ export function TransactionAuditPanel({ tx }: { tx: Transaction }) {
 
       <div className="flex flex-wrap items-center gap-2">
         <TransactionStatusBadge status={tx.status} />
-        {tx.policyResult && <PolicyResultBadge result={tx.policyResult} />}
+        {policyDisp && (
+          <div className="flex flex-col gap-0.5">
+            <PolicyResultBadge result={policyDisp.result} />
+            {policyDisp.subtitle && (
+              <span className="text-caption text-muted-foreground">{policyDisp.subtitle}</span>
+            )}
+          </div>
+        )}
         {tx.reviewState && tx.reviewState !== "approved" && (
           <Badge variant="outline" className="capitalize">
             Review: {tx.reviewState.replace(/_/g, " ")}
           </Badge>
         )}
       </div>
+      {payoutLbl && (
+        <p className="text-body-sm text-muted-foreground border border-border rounded-md bg-muted/30 px-3 py-2">
+          {payoutLbl}
+        </p>
+      )}
 
       {(tx.riskScore != null ||
         (tx.riskFlags && tx.riskFlags.length > 0) ||
@@ -268,7 +284,10 @@ export function TransactionAuditPanel({ tx }: { tx: Transaction }) {
               <FileText className="h-4 w-4" />
               Proof &amp; attachments
             </CardTitle>
-            <CardDescription>Evidence supplied with the request (e.g. invoice file id).</CardDescription>
+            <CardDescription>
+              Evidence supplied with the request. Invoice images load from your workspace upload store when a{" "}
+              <code className="text-xs">fileId</code> is present.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <ul className="space-y-3 text-body-sm">
@@ -280,7 +299,10 @@ export function TransactionAuditPanel({ tx }: { tx: Transaction }) {
                     <span className="font-medium capitalize">{e.type}</span>
                     {fn ? <span className="text-muted-foreground"> — {fn}</span> : null}
                     {fileId ? (
-                      <p className="mt-1 font-mono text-xs text-muted-foreground">fileId: {fileId}</p>
+                      <>
+                        <p className="mt-1 font-mono text-xs text-muted-foreground">fileId: {fileId}</p>
+                        <EvidenceFilePreview fileId={fileId} filename={fn ?? undefined} />
+                      </>
                     ) : null}
                   </li>
                 );
@@ -342,8 +364,8 @@ function TransactionReviewActions({ tx }: { tx: Transaction }) {
   const mutation = useMutation({
     mutationFn: (decision: "approve" | "reject") =>
       reviewTransaction(tx.id, { decision, note: note.trim() || undefined }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["transactions", tx.id] });
+    onSuccess: async (updated) => {
+      queryClient.setQueryData(["transactions", tx.id], updated);
       await queryClient.invalidateQueries({ queryKey: ["transactions"] });
       await queryClient.invalidateQueries({ queryKey: ["review-queue"] });
     },

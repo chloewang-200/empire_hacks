@@ -193,7 +193,12 @@ export type TransactionRailType =
   | "wire"
   | "other";
 
-export type TransactionSourceKind = "api" | "invoice_upload" | "event_production_plan" | "manual";
+export type TransactionSourceKind =
+  | "api"
+  | "invoice_upload"
+  | "invoice_chat"
+  | "event_production_plan"
+  | "manual";
 
 export interface MatchedPayeeSummary {
   id: string;

@@ -11,7 +11,8 @@ const getBaseUrl = () => {
   return process.env.NEXT_PUBLIC_API_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000";
 };
 
-function getCustosAuthHeaders(): HeadersInit {
+/** Bearer JWT for custos_be (sessionStorage). Use with non-JSON fetch (e.g. file blobs). */
+export function getCustosAuthHeaders(): HeadersInit {
   if (typeof window === "undefined") return {};
   const token = sessionStorage.getItem("custos_jwt");
   return token ? { Authorization: `Bearer ${token}` } : {};
