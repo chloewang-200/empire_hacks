@@ -25,7 +25,7 @@ export default function AdminLoginPage() {
 
   useEffect(() => {
     if (session?.user?.role === "admin") {
-      router.replace("/admin/companies");
+      router.replace("/admin/clients");
     }
   }, [router, session]);
 
@@ -34,21 +34,18 @@ export default function AdminLoginPage() {
     setError("");
     setIsSubmitting(true);
 
+    // Use redirect-based flow to avoid JSON parsing issues in NextAuth client.
     const result = await signIn("credentials", {
       username,
       password,
-      redirect: false,
+      callbackUrl: "/admin/clients",
     });
 
+    // When redirecting, NextAuth navigates away; if it returns here with an error, show it.
     setIsSubmitting(false);
-
     if (result?.error) {
       setError("Incorrect admin username or password.");
-      return;
     }
-
-    router.push("/admin/companies");
-    router.refresh();
   }
 
   return (
@@ -60,7 +57,7 @@ export default function AdminLoginPage() {
           </div>
           <h1 className="text-heading-1 text-foreground">Admin Console</h1>
           <p className="mt-2 text-body text-muted-foreground">
-            Sign in to review companies, inspect agent controls, and manage transaction approvals.
+            Sign in to review clients, inspect agent controls, and manage transaction approvals.
           </p>
         </div>
 

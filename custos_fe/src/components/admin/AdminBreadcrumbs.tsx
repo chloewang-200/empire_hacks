@@ -6,6 +6,8 @@ import { ChevronRight } from "lucide-react";
 
 const labels: Record<string, string> = {
   admin: "Admin",
+  clients: "Clients",
+  users: "Users",
   companies: "Companies",
   agents: "Agents",
   transactions: "Transactions",
@@ -22,7 +24,7 @@ export function AdminBreadcrumbs() {
 
   return (
     <nav className="flex items-center gap-1 text-sm">
-      <Link href="/admin/companies" className="text-muted-foreground hover:text-foreground">
+      <Link href="/admin/clients" className="text-muted-foreground hover:text-foreground">
         Custos
       </Link>
       {breadcrumbs.map((crumb, index) => (

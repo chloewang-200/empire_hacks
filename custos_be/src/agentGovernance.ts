@@ -372,6 +372,7 @@ export function evaluateAgentSpendGates(
 export type ValidateAgentChecks = {
   isActive: boolean;
   hasApiKey: boolean;
+  hasSpendCapability: boolean;
   hasValidAllowance: boolean;
   hasValidDailyLimit: boolean;
   hasValidApprovalThreshold: boolean;
@@ -399,6 +400,21 @@ export function validateAgentConfiguration(
 
   const hasApiKey = Boolean(activeKey && !activeKey.revokedAt);
   if (!hasApiKey) issues.push("No active API key.");
+
+  const hasSpendCapability = (() => {
+    try {
+      const caps = JSON.parse(agent.capabilitiesJson ?? "[]") as unknown;
+      if (Array.isArray(caps)) {
+        return caps.some((c) => String(c).toLowerCase().includes("spend"));
+      }
+    } catch {
+      // ignore
+    }
+    return false;
+  })();
+  if (!hasSpendCapability) {
+    issues.push("Agent should have a spend-related capability configured (e.g. spend_request).");
+  }
 
   const hasValidAllowance =
     agent.monthlyAllowanceCents == null || agent.monthlyAllowanceCents > 0;
@@ -430,6 +446,7 @@ export function validateAgentConfiguration(
   const checks: ValidateAgentChecks = {
     isActive,
     hasApiKey,
+    hasSpendCapability,
     hasValidAllowance,
     hasValidDailyLimit: hasValidDaily,
     hasValidApprovalThreshold: hasValidApprovalThreshold && thresholdOk,

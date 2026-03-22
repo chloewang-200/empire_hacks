@@ -38,7 +38,7 @@ export default function AdminTransactionDetailPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["admin-transaction", transactionId] });
       await queryClient.invalidateQueries({ queryKey: ["admin-agent-transactions"] });
-      await queryClient.invalidateQueries({ queryKey: ["admin-companies"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-clients"] });
     },
   });
 
@@ -47,7 +47,7 @@ export default function AdminTransactionDetailPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["admin-transaction", transactionId] });
       await queryClient.invalidateQueries({ queryKey: ["admin-agent-transactions"] });
-      await queryClient.invalidateQueries({ queryKey: ["admin-companies"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-clients"] });
     },
   });
 
@@ -57,7 +57,7 @@ export default function AdminTransactionDetailPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["admin-transaction", transactionId] });
       await queryClient.invalidateQueries({ queryKey: ["admin-agent-transactions"] });
-      await queryClient.invalidateQueries({ queryKey: ["admin-companies"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-clients"] });
     },
   });
 
@@ -67,7 +67,7 @@ export default function AdminTransactionDetailPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["admin-transaction", transactionId] });
       await queryClient.invalidateQueries({ queryKey: ["admin-agent-transactions"] });
-      await queryClient.invalidateQueries({ queryKey: ["admin-companies"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-clients"] });
     },
   });
 
@@ -77,7 +77,7 @@ export default function AdminTransactionDetailPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["admin-transaction", transactionId] });
       await queryClient.invalidateQueries({ queryKey: ["admin-agent-transactions"] });
-      await queryClient.invalidateQueries({ queryKey: ["admin-companies"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-clients"] });
     },
   });
 
@@ -94,7 +94,7 @@ export default function AdminTransactionDetailPage() {
     <div className="space-y-8 animate-fade-up">
       <div className="flex items-start gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link href={transaction.agentId ? `/admin/agents/${transaction.agentId}` : "/admin/companies"}>
+          <Link href={transaction.agentId ? `/admin/agents/${transaction.agentId}` : "/admin/clients"}>
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>

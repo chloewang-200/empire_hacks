@@ -1,5 +1,11 @@
-export type CompanyStatus = "active" | "inactive" | "under_review";
-export type AgentStatus = "active" | "paused" | "revoked" | "deleted";
+export type AdminClientStatus = "active" | "inactive" | "under_review";
+export type AgentStatus =
+  | "active"
+  | "paused"
+  | "revoked"
+  | "deleted"
+  | "disabled"
+  | "needs_setup";
 export type ApprovalStatus =
   | "auto_approved"
   | "pending_human_approval"
@@ -18,10 +24,14 @@ export type RuleEvaluationResult =
   | "needs_review";
 export type PaymentMethod = "ach" | "wire" | "card" | "check" | "crypto" | "other";
 
-export interface CompanySummary {
+export interface AdminClientSummary {
   clientId: string;
-  companyName: string;
-  companyStatus: CompanyStatus;
+  clientName: string;
+  clientStatus: AdminClientStatus;
+  primaryContactUserId: string;
+  primaryContactName: string | null;
+  primaryContactEmail: string;
+  primaryContactRole: "owner" | "admin" | "finance" | "approver" | "viewer";
   defaultCurrency: string;
   agentCount: number;
   transactionCount: number;
@@ -30,13 +40,17 @@ export interface CompanySummary {
   lastTransactionAt: string | null;
 }
 
+export type CompanyStatus = AdminClientStatus;
+export type CompanySummary = AdminClientSummary;
+export type AdminUserSummary = AdminClientSummary;
+
 export interface AdminAgent {
   agentId: string;
   clientId: string;
   agentName: string;
   agentType: string | null;
   agentStatus: AgentStatus;
-  apiKeyId: string;
+  apiKeyId: string | null;
   apiKeyPrefix: string | null;
   monthlyAllowance: number;
   approvalThreshold: number;
