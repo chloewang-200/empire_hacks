@@ -27,6 +27,8 @@ export async function getAgent(id: string): Promise<Agent> {
 export interface CreateAgentBody {
   name: string;
   description?: string;
+  /** Integration category (e.g. event_production) — optional */
+  agentType?: string;
   templateType: string;
   assignedWalletId: string;
   role: string;

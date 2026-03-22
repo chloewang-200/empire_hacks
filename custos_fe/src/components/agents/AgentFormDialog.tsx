@@ -34,6 +34,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { createAgent, updateAgent } from "@/lib/api/agents";
 import { agentFormSchema, type AgentFormValues } from "@/lib/validators/agent";
 import { AGENT_ROLES, AGENT_STARTER_TEMPLATES } from "@/lib/constants";
+import { applyStarterTemplateFields } from "@/lib/agentTemplatePresets";
 import { AgentGovernanceStep } from "@/components/agents/AgentGovernanceStep";
 import { useQuery } from "@tanstack/react-query";
 import { getWallets } from "@/lib/api/wallets";
@@ -182,6 +183,7 @@ export function AgentFormDialog({
     const body: Parameters<typeof createAgent>[0] = {
       name: values.name,
       description: values.description,
+      agentType: resolvedTemplate === "event_production" ? "event_production" : undefined,
       templateType: resolvedTemplate ?? "custom",
       assignedWalletId: values.assignedWalletId,
       role: values.role,
@@ -361,6 +363,7 @@ export function AgentFormDialog({
                                     onClick={() => {
                                       field.onChange(t.value);
                                       form.clearErrors("templateType");
+                                      applyStarterTemplateFields(t.value, form.setValue);
                                     }}
                                     className={cn(
                                       "rounded-lg border px-3 py-3 text-left text-sm transition-colors",

@@ -144,6 +144,12 @@ export default function OverviewPage() {
                 Invoice Agent
               </Link>
             </Button>
+            <Button variant="outline" className="justify-start" asChild>
+              <Link href="/templates/event-production">
+                <ArrowRight className="mr-2 h-4 w-4" />
+                Event payouts
+              </Link>
+            </Button>
           </CardContent>
         </Card>
       </div>

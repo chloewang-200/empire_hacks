@@ -13,6 +13,7 @@ export const AGENT_ROLES = [
 ] as const;
 
 export const AGENT_TEMPLATE_TYPES = [
+  { value: "event_production", label: "Event production payouts" },
   { value: "invoice", label: "Invoice Agent" },
   { value: "procurement", label: "Procurement Agent" },
   { value: "travel", label: "Travel Agent" },
@@ -23,6 +24,12 @@ export const AGENT_TEMPLATE_TYPES = [
 
 /** Templates shown in “Start from a template” flow (excludes generic custom). */
 export const AGENT_STARTER_TEMPLATES = [
+  {
+    value: "event_production",
+    label: "Event production payouts",
+    description:
+      "Turn budgets and vendor rosters into many governed payout requests — best first template for multi-vendor events.",
+  },
   {
     value: "invoice",
     label: "Invoice Agent",

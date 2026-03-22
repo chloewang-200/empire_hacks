@@ -27,6 +27,7 @@ import { submitAgentTransactionRequest } from "./transactionFlow.js";
 import { executeAutomatedPayout } from "./payoutExecution.js";
 import { stripe, stripeEnabled } from "./stripe.js";
 import { ensureStripeCustomerForWallet } from "./stripeWallet.js";
+import { runEventProductionPlan } from "./eventProductionPlan.js";
 import { z } from "zod";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -1362,6 +1363,12 @@ app.get("/api/templates", async () => {
         description: "Parse invoices and request payment",
         status: "available",
       },
+      {
+        id: "event_production",
+        name: "Event production payouts",
+        description: "Reconcile event budgets and vendor lines into governed payout requests",
+        status: "available",
+      },
     ],
   };
 });
@@ -1373,6 +1380,35 @@ app.get("/api/templates/invoice", async () => ({
   expectedInputs: ["screenshot"],
   permissionsNeeded: ["spend"],
 }));
+
+app.get("/api/templates/event_production", async () => ({
+  id: "event_production",
+  name: "Event production payouts",
+  description:
+    "Paste budgets, contracts, or vendor lists; get draft payables, then submit each line through Custos policy and risk signals.",
+  expectedInputs: ["budget text", "vendor roster", "optional notes"],
+  permissionsNeeded: ["spend"],
+}));
+
+/** Plan event vendor payables (mock, naive parse, or LLM via CUSTOS_EVENT_AGENT_URL). */
+app.post("/api/event-production/plan", async (req, reply) => {
+  const user = await requireUser(req.headers.authorization);
+  const ws = await getWorkspaceForUser(user.id);
+  if (!ws) return reply.status(404).send({ message: "No workspace" });
+  const body = z
+    .object({
+      eventName: z.string().optional(),
+      notes: z.string().optional(),
+      documentsText: z.string().min(1, "documentsText is required"),
+    })
+    .parse(req.body);
+  try {
+    return await runEventProductionPlan(body);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return reply.status(502).send({ message: msg });
+  }
+});
 
 await mkdir(UPLOAD_ROOT, { recursive: true });
 

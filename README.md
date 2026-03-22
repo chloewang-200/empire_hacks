@@ -9,6 +9,7 @@ This repo is a **monorepo**:
 | [`custos_fe/`](custos_fe/) | Next.js 14 dashboard (agents, wallets, transactions, review queue, invoice template UI). |
 | [`custos_be/`](custos_be/) | Fastify + Prisma API: auth bootstrap, CRUD, policy checks, `POST /api/transactions/request` for agent API keys. |
 | [`custos_agents/invoice/`](custos_agents/invoice/) | Optional template worker: sync invoice image extract (mock or OpenAI); `custos_be` can proxy to it via `CUSTOS_INVOICE_AGENT_URL`. |
+| [`custos_agents/event_production/`](custos_agents/event_production/) | Optional: LLM event budget → vendor payables; `custos_be` proxies via `CUSTOS_EVENT_AGENT_URL` (otherwise naive parse + demo lines). |
 
 Detailed frontend setup (Google OAuth, env vars, troubleshooting) lives in [`custos_fe/README.md`](custos_fe/README.md).
 

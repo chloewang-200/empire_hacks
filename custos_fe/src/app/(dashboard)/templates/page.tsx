@@ -47,7 +47,11 @@ export default function TemplatesPage() {
                 </Badge>
               </CardHeader>
               <CardContent className="mt-auto pt-0">
-                {t.status === "available" && t.id === "invoice" ? (
+                {t.status === "available" && t.id === "event_production" ? (
+                  <Button asChild>
+                    <Link href="/templates/event-production">Open</Link>
+                  </Button>
+                ) : t.status === "available" && t.id === "invoice" ? (
                   <Button asChild>
                     <Link href="/templates/invoice">Configure</Link>
                   </Button>

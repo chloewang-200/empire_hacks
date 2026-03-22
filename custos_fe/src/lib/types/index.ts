@@ -163,7 +163,7 @@ export type TransactionRailType =
   | "wire"
   | "other";
 
-export type TransactionSourceKind = "api" | "invoice_upload" | "manual";
+export type TransactionSourceKind = "api" | "invoice_upload" | "event_production_plan" | "manual";
 
 export interface MatchedPayeeSummary {
   id: string;
@@ -265,6 +265,30 @@ export interface ReviewItem {
   flaggedReason?: string;
   ageMinutes: number;
   reviewerStatus?: "pending" | "reviewed";
+}
+
+/** One vendor line from the event production planner (before Custos transaction). */
+export interface EventPayableLine {
+  vendor: string;
+  role?: string;
+  amount: number;
+  memo?: string;
+  confidence: number;
+  lineRiskScore: number;
+}
+
+export interface EventProductionPlanResult {
+  eventId: string;
+  eventName: string;
+  summary: string;
+  payables: EventPayableLine[];
+  aggregateRiskScore: number;
+  riskFlags: string[];
+  agentDecision: {
+    summary: string;
+    reasoning?: string;
+    modelConfidence: number;
+  };
 }
 
 export interface InvoiceExtractionResult {

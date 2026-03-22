@@ -13,6 +13,7 @@ const labels: Record<string, string> = {
   templates: "Agent Templates",
   payees: "Payees",
   invoice: "Invoice Agent",
+  "event-production": "Event payouts",
   settings: "Settings",
 };
 

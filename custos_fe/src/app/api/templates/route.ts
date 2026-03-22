@@ -3,6 +3,13 @@ import type { AgentTemplate } from "@/lib/types";
 
 const TEMPLATES: AgentTemplate[] = [
   {
+    id: "event_production",
+    name: "Event production payouts",
+    description:
+      "Paste event budgets and vendor rosters; draft many payables, then route each line through Custos policy, risk, and payouts.",
+    status: "available",
+  },
+  {
     id: "invoice",
     name: "Invoice Agent",
     description: "Turn invoice uploads into payment requests. Upload images or PDFs; extract vendor, amount, due date; submit for policy evaluation.",

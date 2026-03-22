@@ -48,6 +48,11 @@ export interface RequestTransactionBody {
   railType?: string;
   sourceKind?: string;
   evidence?: { type: string; [k: string]: unknown }[];
+  idempotencyKey?: string;
+  riskScore?: number;
+  riskFlags?: string[];
+  citedRules?: { id: string; title: string; source?: string; excerpt?: string }[];
+  agentDecision?: { summary: string; reasoning?: string; modelConfidence?: number };
 }
 
 /** Dashboard & invoice UI — user JWT; same payload shape as agent API. */
