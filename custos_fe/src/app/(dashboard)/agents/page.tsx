@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -19,9 +19,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { getAgents } from "@/lib/api/agents";
+import { deleteAgent, getAgents } from "@/lib/api/agents";
 import { AgentStatusBadge } from "@/components/status/StatusBadge";
 import { EmptyState } from "@/components/empty-state/EmptyState";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -30,8 +31,14 @@ import { AgentFormDialog } from "@/components/agents/AgentFormDialog";
 
 export default function AgentsPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [formOpen, setFormOpen] = useState(false);
+  const deleteMut = useMutation({
+    mutationFn: (agentId: string) => deleteAgent(agentId),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["agents"] }),
+    onError: (e) => alert(e instanceof Error ? e.message : "Could not delete agent"),
+  });
   const { data, isLoading } = useQuery({
     queryKey: ["agents", { page: 1, pageSize: 50 }],
     queryFn: () => getAgents({ page: 1, pageSize: 50 }),
@@ -131,20 +138,54 @@ export default function AgentsPage() {
                           <DropdownMenuItem onClick={() => router.push(`/agents/${agent.id}/edit`)}>Edit</DropdownMenuItem>
                           {agent.templateType === "invoice" && (
                             <DropdownMenuItem asChild>
-                              <Link href={`/templates/invoice?agentId=${encodeURIComponent(agent.id)}`}>
+                              <Link
+                                href={`/templates/invoice?agentId=${encodeURIComponent(agent.id)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
                                 Invoice upload (this agent)
                               </Link>
                             </DropdownMenuItem>
                           )}
                           {agent.templateType === "invoice_chat" && (
                             <DropdownMenuItem asChild>
-                              <Link href={`/templates/invoice-chat?agentId=${encodeURIComponent(agent.id)}`}>
+                              <Link
+                                href={`/templates/invoice-chat?agentId=${encodeURIComponent(agent.id)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
                                 Invoice Copilot chat
+                              </Link>
+                            </DropdownMenuItem>
+                          )}
+                          {agent.templateType === "event_production" && (
+                            <DropdownMenuItem asChild>
+                              <Link
+                                href={`/templates/event-production?agentId=${encodeURIComponent(agent.id)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                Event payout planner
                               </Link>
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem asChild>
                             <Link href={`/transactions?agentId=${agent.id}`}>View transactions</Link>
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => {
+                              if (
+                                !confirm(
+                                  `Delete agent “${agent.name}”? API keys and settings will be removed. This cannot be undone.`
+                                )
+                              )
+                                return;
+                              deleteMut.mutate(agent.id);
+                            }}
+                          >
+                            Delete agent
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

@@ -151,7 +151,7 @@ export default function EventProductionAgentPage() {
           you then send each line through Custos for policy, risk score, and payout execution.
         </p>
         <p className="mt-2 text-caption text-muted-foreground">
-          <Link href="/payees" className="font-medium text-primary underline-offset-4 hover:underline">
+          <Link href="/payees" className="link-readable">
             Approved payees
           </Link>{" "}
           should list your vendors (aliases help auto-match). Wallet policy still applies per line.

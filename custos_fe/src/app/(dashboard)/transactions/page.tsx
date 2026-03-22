@@ -1,8 +1,8 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,11 +54,27 @@ function TransactionsPageFallback() {
 
 function TransactionsPageContent() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const [statusFilter, setStatusFilter] = useState(
     () => searchParams.get("status") ?? "all"
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const txFromUrl = searchParams.get("tx");
+  useEffect(() => {
+    if (txFromUrl) setSelectedId(txFromUrl);
+  }, [txFromUrl]);
+
+  function handleDetailOpenChange(open: boolean) {
+    if (open) return;
+    setSelectedId(null);
+    if (!searchParams.get("tx")) return;
+    const sp = new URLSearchParams(searchParams.toString());
+    sp.delete("tx");
+    const q = sp.toString();
+    router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
+  }
 
   const { data, isLoading, error } = useQuery({
     queryKey: [
@@ -205,7 +221,7 @@ function TransactionsPageContent() {
         <TransactionDetailSheet
           transactionId={selectedId}
           open={!!selectedId}
-          onOpenChange={(open) => !open && setSelectedId(null)}
+          onOpenChange={handleDetailOpenChange}
         />
       )}
     </div>

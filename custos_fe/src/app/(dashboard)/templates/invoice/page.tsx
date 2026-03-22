@@ -202,10 +202,7 @@ export default function InvoiceAgentPage() {
               </>
             ) : null}
             .{" "}
-            <Link
-              href={`/agents/${agentId}`}
-              className="font-medium text-primary underline-offset-4 hover:underline"
-            >
+            <Link href={`/agents/${agentId}`} className="link-readable">
               Agent profile
             </Link>
           </p>
@@ -227,7 +224,7 @@ export default function InvoiceAgentPage() {
           Upload an invoice, extract fields, and submit a payment request — full audit trail on the transaction.
         </p>
         <p className="mt-2 text-caption text-muted-foreground">
-          <Link href="/payees" className="font-medium text-primary underline-offset-4 hover:underline">
+          <Link href="/payees" className="link-readable">
             Manage approved payees
           </Link>{" "}
           so vendor strings match your directory (or require a match in wallet policy).
@@ -363,7 +360,7 @@ export default function InvoiceAgentPage() {
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Wallet always matches the agent’s assignment.{" "}
-                      <Link href={`/agents/${boundAgent.id}`} className="text-primary underline-offset-4 hover:underline">
+                      <Link href={`/agents/${boundAgent.id}`} className="link-readable">
                         Change agent or wallet
                       </Link>
                     </p>

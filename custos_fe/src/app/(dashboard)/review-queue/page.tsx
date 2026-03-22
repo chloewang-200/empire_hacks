@@ -1,7 +1,8 @@
 "use client";
 
+import { Suspense, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { getReviewQueue } from "@/lib/api/review";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,8 +12,37 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TransactionDetailSheet } from "@/components/transactions/TransactionDetailSheet";
 import { TransactionStatusBadge } from "@/components/status/StatusBadge";
 
-export default function ReviewQueuePage() {
+function ReviewQueueFallback() {
+  return (
+    <div className="space-y-6">
+      <Skeleton className="h-9 w-48" />
+      <Skeleton className="h-24 w-full" />
+      <Skeleton className="h-64 w-full rounded-lg" />
+    </div>
+  );
+}
+
+function ReviewQueueContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const txFromUrl = searchParams.get("tx");
+  useEffect(() => {
+    if (txFromUrl) setSelectedId(txFromUrl);
+  }, [txFromUrl]);
+
+  function handleDetailOpenChange(open: boolean) {
+    if (open) return;
+    setSelectedId(null);
+    if (!searchParams.get("tx")) return;
+    const sp = new URLSearchParams(searchParams.toString());
+    sp.delete("tx");
+    const q = sp.toString();
+    router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
+  }
+
   const { data, isLoading, error } = useQuery({
     queryKey: ["review-queue", { page: 1, pageSize: 50 }],
     retry: false,
@@ -99,9 +129,17 @@ export default function ReviewQueuePage() {
         <TransactionDetailSheet
           transactionId={selectedId}
           open={!!selectedId}
-          onOpenChange={(open) => !open && setSelectedId(null)}
+          onOpenChange={handleDetailOpenChange}
         />
       )}
     </div>
+  );
+}
+
+export default function ReviewQueuePage() {
+  return (
+    <Suspense fallback={<ReviewQueueFallback />}>
+      <ReviewQueueContent />
+    </Suspense>
   );
 }

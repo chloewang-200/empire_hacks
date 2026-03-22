@@ -1,7 +1,7 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams, useSearchParams } from "next/navigation";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { ArrowLeft } from "lucide-react";
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getWorkspace } from "@/lib/api/workspace";
-import { getWallet } from "@/lib/api/wallets";
+import { deleteWallet, getWallet } from "@/lib/api/wallets";
 import { FundingPreferenceHint } from "@/components/wallets/FundingPreferenceHint";
 import { refreshWalletBalances } from "@/lib/refreshWalletBalances";
 import { WalletStatusBadge } from "@/components/status/StatusBadge";
@@ -20,6 +20,7 @@ import { Progress } from "@/components/ui/progress";
 
 export default function WalletDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const id = params.id as string;
@@ -27,6 +28,15 @@ export default function WalletDetailPage() {
   const { data: wallet, isLoading } = useQuery({
     queryKey: ["wallets", id],
     queryFn: () => getWallet(id),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: () => deleteWallet(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["wallets"] });
+      router.push("/wallets");
+    },
+    onError: (e) => alert(e instanceof Error ? e.message : "Could not delete wallet"),
   });
 
   const { data: workspace } = useQuery({
@@ -194,7 +204,7 @@ export default function WalletDetailPage() {
         </Card>
       ) : null}
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Button variant="outline" asChild>
           <Link href={`/wallets/${id}/edit`}>Edit wallet</Link>
         </Button>
@@ -203,6 +213,23 @@ export default function WalletDetailPage() {
         </Button>
         <Button variant="outline" asChild>
           <Link href={`/transactions?walletId=${id}`}>View transactions</Link>
+        </Button>
+        <Button
+          type="button"
+          variant="destructive"
+          disabled={deleteMut.isPending}
+          onClick={() => {
+            const n = wallet.assignedAgentsCount ?? 0;
+            if (
+              !confirm(
+                `Delete wallet “${wallet.name}”? This cannot be undone.${n > 0 ? ` ${n} agent(s) on this wallet will be removed.` : ""}`
+              )
+            )
+              return;
+            deleteMut.mutate();
+          }}
+        >
+          {deleteMut.isPending ? "Deleting…" : "Delete wallet"}
         </Button>
       </div>
 

@@ -1,53 +1,47 @@
 import { NextResponse } from "next/server";
-import type { Agent } from "@/lib/types";
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id } = await params;
-  // TODO: Fetch from backend
-  const agent: Agent = {
-    id,
-    name: "Placeholder Agent",
-    description: "",
-    templateType: "custom",
-    assignedWalletId: "wal_1",
-    role: "requester",
-    capabilities: [],
-    status: "active",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-  return NextResponse.json(agent);
+function backendBase(): string | null {
+  const base =
+    process.env.CUSTOS_API_URL?.replace(/\/$/, "") ??
+    process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
+  return base || null;
 }
 
-export async function PATCH(
+export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const body = await request.json();
-  // TODO: Update in backend
-  const agent: Agent = {
-    id,
-    name: body.name ?? "Placeholder Agent",
-    description: body.description,
-    templateType: body.templateType ?? "custom",
-    assignedWalletId: body.assignedWalletId ?? "wal_1",
-    role: body.role ?? "requester",
-    capabilities: body.capabilities ?? [],
-    status: body.status ?? "active",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-  return NextResponse.json(agent);
-}
-
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  await params;
-  return NextResponse.json({ ok: true });
+  const base = backendBase();
+  if (!base) {
+    return NextResponse.json(
+      { message: "Set CUSTOS_API_URL or NEXT_PUBLIC_API_URL to your custos_be URL" },
+      { status: 500 }
+    );
+  }
+  const auth = request.headers.get("authorization");
+  let r: Response;
+  try {
+    r = await fetch(`${base}/api/agents/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: auth ? { Authorization: auth } : {},
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Cannot reach custos_be";
+    return NextResponse.json({ message }, { status: 503 });
+  }
+  const text = await r.text();
+  if (!r.ok) {
+    try {
+      const j = JSON.parse(text) as { message?: string };
+      return NextResponse.json({ message: j.message ?? r.statusText }, { status: r.status });
+    } catch {
+      return NextResponse.json({ message: text || r.statusText }, { status: r.status });
+    }
+  }
+  try {
+    return NextResponse.json(text ? JSON.parse(text) : { ok: true });
+  } catch {
+    return NextResponse.json({ ok: true });
+  }
 }

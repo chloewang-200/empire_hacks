@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import type { Wallet } from "@/lib/types";
 
+function backendBase(): string | null {
+  const base =
+    process.env.CUSTOS_API_URL?.replace(/\/$/, "") ??
+    process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
+  return base || null;
+}
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -41,9 +48,40 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  await params;
-  return NextResponse.json({ ok: true });
+  const { id } = await params;
+  const base = backendBase();
+  if (!base) {
+    return NextResponse.json(
+      { message: "Set CUSTOS_API_URL or NEXT_PUBLIC_API_URL to your custos_be URL" },
+      { status: 500 }
+    );
+  }
+  const auth = request.headers.get("authorization");
+  let r: Response;
+  try {
+    r = await fetch(`${base}/api/wallets/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: auth ? { Authorization: auth } : {},
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Cannot reach custos_be";
+    return NextResponse.json({ message }, { status: 503 });
+  }
+  const text = await r.text();
+  if (!r.ok) {
+    try {
+      const j = JSON.parse(text) as { message?: string };
+      return NextResponse.json({ message: j.message ?? r.statusText }, { status: r.status });
+    } catch {
+      return NextResponse.json({ message: text || r.statusText }, { status: r.status });
+    }
+  }
+  try {
+    return NextResponse.json(text ? JSON.parse(text) : { ok: true });
+  } catch {
+    return NextResponse.json({ ok: true });
+  }
 }

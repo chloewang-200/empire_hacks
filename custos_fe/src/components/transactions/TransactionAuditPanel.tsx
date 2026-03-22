@@ -59,7 +59,7 @@ export function TransactionAuditPanel({ tx }: { tx: Transaction }) {
                 : "Raised for human review — policy, payee directory, or manual ops mode may require approval."}
             </p>
             {tx.status === "pending_review" && (
-              <ButtonLinkReviewQueue className="mt-2 inline-block text-sm font-medium text-primary underline-offset-4 hover:underline" />
+              <ButtonLinkReviewQueue className="link-readable mt-2 inline-block text-sm" />
             )}
           </div>
         </div>

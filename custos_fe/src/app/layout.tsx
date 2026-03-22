@@ -5,6 +5,10 @@ import { Providers } from "@/providers/Providers";
 export const metadata: Metadata = {
   title: "Custos — Spend governance for AI agents",
   description: "Control layer and decisioning layer for agent payments.",
+  icons: {
+    icon: "/images/favicon.ico",
+    shortcut: "/images/favicon.ico",
+  },
 };
 
 export default function RootLayout({

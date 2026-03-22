@@ -278,11 +278,11 @@ export default function InvoiceChatTemplatePage() {
           (heuristics work offline).
         </p>
         <p className="mt-2 text-caption text-muted-foreground">
-          <Link href="/templates/invoice" className="text-primary underline-offset-4 hover:underline">
+          <Link href="/templates/invoice" className="link-readable">
             Prefer the structured form?
           </Link>{" "}
           ·{" "}
-          <Link href="/payees" className="text-primary underline-offset-4 hover:underline">
+          <Link href="/payees" className="link-readable">
             Approved payees
           </Link>
         </p>
@@ -309,7 +309,7 @@ export default function InvoiceChatTemplatePage() {
         <Card className="overflow-hidden border-border/80 bg-gradient-to-b from-card to-muted/20 shadow-sm">
           <CardHeader className="border-b border-border/60 pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
-              <Sparkles className="h-4 w-4 text-primary" />
+              <Sparkles className="h-4 w-4 text-neutral-950 dark:text-neutral-50" />
               Conversation
             </CardTitle>
             <CardDescription>Upload once, then chat to refine fields before submit.</CardDescription>
@@ -464,7 +464,7 @@ export default function InvoiceChatTemplatePage() {
               {boundAgent && boundWallet ? (
                 <p className="text-caption text-muted-foreground">
                   Wallet: <span className="font-medium text-foreground">{boundWallet.name}</span> ·{" "}
-                  <Link href={`/agents/${boundAgent.id}`} className="text-primary underline-offset-4 hover:underline">
+                  <Link href={`/agents/${boundAgent.id}`} className="link-readable">
                     Agent settings
                   </Link>
                 </p>

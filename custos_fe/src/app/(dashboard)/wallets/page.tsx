@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Plus, MoreHorizontal } from "lucide-react";
@@ -18,9 +18,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { getWallets } from "@/lib/api/wallets";
+import { deleteWallet, getWallets } from "@/lib/api/wallets";
 import { WalletStatusBadge } from "@/components/status/StatusBadge";
 import { EmptyState } from "@/components/empty-state/EmptyState";
 import { formatCurrency } from "@/lib/utils";
@@ -29,8 +30,14 @@ import { WalletFormDialog } from "@/components/wallets/WalletFormDialog";
 
 export default function WalletsPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [formOpen, setFormOpen] = useState(false);
+  const deleteMut = useMutation({
+    mutationFn: (walletId: string) => deleteWallet(walletId),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["wallets"] }),
+    onError: (e) => alert(e instanceof Error ? e.message : "Could not delete wallet"),
+  });
   const { data, isLoading } = useQuery({
     queryKey: ["wallets", { page: 1, pageSize: 50 }],
     queryFn: () => getWallets({ page: 1, pageSize: 50 }),
@@ -131,6 +138,22 @@ export default function WalletsPage() {
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => router.push(`/wallets/${wallet.id}?fund=1`)}>
                           Add funds
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => {
+                            const n = wallet.assignedAgentsCount ?? 0;
+                            if (
+                              !confirm(
+                                `Delete wallet “${wallet.name}”? This cannot be undone.${n > 0 ? ` ${n} agent(s) on this wallet will be removed.` : ""}`
+                              )
+                            )
+                              return;
+                            deleteMut.mutate(wallet.id);
+                          }}
+                        >
+                          Delete wallet
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

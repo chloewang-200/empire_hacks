@@ -1,13 +1,13 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, CalendarRange, FileText, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getAgent } from "@/lib/api/agents";
+import { deleteAgent, getAgent } from "@/lib/api/agents";
 import { AgentStatusBadge } from "@/components/status/StatusBadge";
 import { ApiKeyRevealCard } from "@/components/agents/ApiKeyRevealCard";
 import { compileAuditPolicyText } from "@/lib/auditPolicy";
@@ -16,10 +16,20 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 export default function AgentDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const id = params.id as string;
   const { data: agent, isLoading } = useQuery({
     queryKey: ["agents", id],
     queryFn: () => getAgent(id),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: () => deleteAgent(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["agents"] });
+      router.push("/agents");
+    },
+    onError: (e) => alert(e instanceof Error ? e.message : "Could not delete agent"),
   });
 
   if (isLoading || !agent) {
@@ -50,7 +60,11 @@ export default function AgentDetailPage() {
         <AgentStatusBadge status={agent.status} />
         {agent.templateType === "invoice" && (
           <Button asChild>
-            <Link href={`/templates/invoice?agentId=${encodeURIComponent(agent.id)}`}>
+            <Link
+              href={`/templates/invoice?agentId=${encodeURIComponent(agent.id)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               <FileText className="mr-2 h-4 w-4" />
               Invoice upload / OCR
             </Link>
@@ -58,7 +72,11 @@ export default function AgentDetailPage() {
         )}
         {agent.templateType === "invoice_chat" && (
           <Button asChild>
-            <Link href={`/templates/invoice-chat?agentId=${encodeURIComponent(agent.id)}`}>
+            <Link
+              href={`/templates/invoice-chat?agentId=${encodeURIComponent(agent.id)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               <MessageSquare className="mr-2 h-4 w-4" />
               Invoice Copilot chat
             </Link>
@@ -66,7 +84,11 @@ export default function AgentDetailPage() {
         )}
         {agent.templateType === "event_production" && (
           <Button asChild>
-            <Link href={`/templates/event-production?agentId=${encodeURIComponent(agent.id)}`}>
+            <Link
+              href={`/templates/event-production?agentId=${encodeURIComponent(agent.id)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               <CalendarRange className="mr-2 h-4 w-4" />
               Event payout planner
             </Link>
@@ -74,6 +96,22 @@ export default function AgentDetailPage() {
         )}
         <Button variant="outline" onClick={() => router.push(`/agents/${id}/edit`)}>
           Edit
+        </Button>
+        <Button
+          type="button"
+          variant="destructive"
+          disabled={deleteMut.isPending}
+          onClick={() => {
+            if (
+              !confirm(
+                `Delete agent “${agent.name}”? API keys and settings will be removed. This cannot be undone.`
+              )
+            )
+              return;
+            deleteMut.mutate();
+          }}
+        >
+          {deleteMut.isPending ? "Deleting…" : "Delete"}
         </Button>
       </div>
 

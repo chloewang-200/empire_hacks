@@ -242,16 +242,16 @@ export function AgentFormDialog({
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 )}
               >
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-neutral-100 text-neutral-950 transition-colors group-hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-50 dark:group-hover:bg-neutral-700">
                   <Plug className="h-6 w-6" />
                 </div>
-                <h3 className="mt-4 text-base font-semibold text-foreground">
+                <h3 className="mt-4 text-base font-semibold text-neutral-950 dark:text-neutral-50">
                   Connect your agent
                 </h3>
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                   You already have an agent or integration. Register it here, assign a wallet, and use API keys to send transaction requests.
                 </p>
-                <span className="mt-4 inline-flex items-center text-sm font-medium text-primary">
+                <span className="mt-4 inline-flex items-center text-sm font-semibold text-neutral-950 underline decoration-2 underline-offset-4 decoration-yellow-400 dark:text-neutral-50 dark:decoration-yellow-500">
                   Continue
                   <ChevronRight className="ml-1 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                 </span>
@@ -266,16 +266,16 @@ export function AgentFormDialog({
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 )}
               >
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-neutral-100 text-neutral-950 transition-colors group-hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-50 dark:group-hover:bg-neutral-700">
                   <LayoutTemplate className="h-6 w-6" />
                 </div>
-                <h3 className="mt-4 text-base font-semibold text-foreground">
+                <h3 className="mt-4 text-base font-semibold text-neutral-950 dark:text-neutral-50">
                   Start from a template
                 </h3>
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                   Use a pre-built agent type (e.g. Invoice, Travel). We’ll preconfigure roles and flows you can extend later.
                 </p>
-                <span className="mt-4 inline-flex items-center text-sm font-medium text-primary">
+                <span className="mt-4 inline-flex items-center text-sm font-semibold text-neutral-950 underline decoration-2 underline-offset-4 decoration-yellow-400 dark:text-neutral-50 dark:decoration-yellow-500">
                   Choose template
                   <ChevronRight className="ml-1 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                 </span>

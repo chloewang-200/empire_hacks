@@ -154,6 +154,10 @@
 }
 
 @layer utilities {
+  /* Inline links: dark text + yellow underline (primary brand is lime/yellow — body links stay readable) */
+  .link-readable {
+    @apply font-medium text-neutral-950 underline decoration-2 underline-offset-4 decoration-yellow-400 dark:text-neutral-50 dark:decoration-yellow-500;
+  }
   .text-gradient {
     @apply bg-clip-text text-transparent;
     background-image: var(--gradient-text);
