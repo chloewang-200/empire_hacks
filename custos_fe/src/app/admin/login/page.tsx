@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/card";
 
 export default function AdminLoginPage() {
+  const authEnabled = process.env.NEXT_PUBLIC_ENABLE_AUTH === "true";
   const router = useRouter();
   const { data: session } = useSession();
   const [username, setUsername] = useState("admin");
@@ -25,7 +26,7 @@ export default function AdminLoginPage() {
 
   useEffect(() => {
     if (session?.user?.role === "admin") {
-      router.replace("/admin/clients");
+      router.replace("/admin/review-queue");
     }
   }, [router, session]);
 
@@ -34,17 +35,30 @@ export default function AdminLoginPage() {
     setError("");
     setIsSubmitting(true);
 
-    // Use redirect-based flow to avoid JSON parsing issues in NextAuth client.
-    const result = await signIn("credentials", {
-      username,
-      password,
-      callbackUrl: "/admin/clients",
-    });
+    if (!authEnabled) {
+      router.push("/admin/review-queue");
+      return;
+    }
 
-    // When redirecting, NextAuth navigates away; if it returns here with an error, show it.
-    setIsSubmitting(false);
-    if (result?.error) {
-      setError("Incorrect admin username or password.");
+    try {
+      const result = await signIn("credentials", {
+        username,
+        password,
+        callbackUrl: "/admin/review-queue",
+        redirect: false,
+      });
+
+      if (result?.error) {
+        setError("Incorrect admin username or password.");
+        return;
+      }
+
+      router.push(result?.url ?? "/admin/review-queue");
+      router.refresh();
+    } catch {
+      setError("Sign-in failed. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
   }
 

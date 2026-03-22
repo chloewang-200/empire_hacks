@@ -40,8 +40,32 @@ export async function apiFetch<T>(
   return res.json() as Promise<T>;
 }
 
+export async function apiRelativeFetch<T>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const res = await fetch(path, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...getCustosAuthHeaders(),
+      ...options.headers,
+    },
+    credentials: "include",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error((err as { message?: string }).message ?? res.statusText);
+  }
+  return res.json() as Promise<T>;
+}
+
 export function apiGet<T>(path: string): Promise<T> {
   return apiFetch<T>(path, { method: "GET" });
+}
+
+export function apiRelativeGet<T>(path: string): Promise<T> {
+  return apiRelativeFetch<T>(path, { method: "GET" });
 }
 
 export function apiPost<T>(path: string, body?: unknown): Promise<T> {
@@ -51,8 +75,22 @@ export function apiPost<T>(path: string, body?: unknown): Promise<T> {
   });
 }
 
+export function apiRelativePost<T>(path: string, body?: unknown): Promise<T> {
+  return apiRelativeFetch<T>(path, {
+    method: "POST",
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+}
+
 export function apiPatch<T>(path: string, body?: unknown): Promise<T> {
   return apiFetch<T>(path, {
+    method: "PATCH",
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+}
+
+export function apiRelativePatch<T>(path: string, body?: unknown): Promise<T> {
+  return apiRelativeFetch<T>(path, {
     method: "PATCH",
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });

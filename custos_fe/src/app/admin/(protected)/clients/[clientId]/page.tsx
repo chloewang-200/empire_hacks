@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Bot, Receipt, ShieldAlert } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Bot, Receipt, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -93,6 +93,15 @@ export default function AdminClientDetailPage() {
         />
       </div>
 
+      <div className="flex flex-wrap gap-3">
+        <Button variant="outline" asChild>
+          <Link href="/admin/review-queue">Open review queue</Link>
+        </Button>
+        <Button variant="outline" asChild>
+          <Link href="/admin/transactions">View all transactions</Link>
+        </Button>
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Agents</CardTitle>
@@ -117,10 +126,11 @@ export default function AdminClientDetailPage() {
               </TableHeader>
               <TableBody>
                 {clientAgents.map((agent) => (
-                  <TableRow key={agent.agentId}>
+                  <TableRow key={agent.agentId} className="admin-table-row">
                     <TableCell className="font-medium">
-                      <Link href={`/admin/agents/${agent.agentId}`}>
+                      <Link href={`/admin/agents/${agent.agentId}`} className="admin-link">
                         {agent.agentName}
+                        <ArrowUpRight className="h-4 w-4" />
                       </Link>
                     </TableCell>
                     <TableCell>
@@ -148,14 +158,15 @@ export default function AdminClientDetailPage() {
           {transactions.slice(0, 5).map((transaction) => (
             <div
               key={transaction.transactionId}
-              className="flex items-center justify-between rounded-lg border border-border px-4 py-3"
+              className="admin-card-link flex items-center justify-between rounded-lg border border-border px-4 py-3"
             >
               <div>
                 <Link
                   href={`/admin/transactions/${transaction.transactionId}`}
-                  className="font-medium text-foreground hover:underline"
+                  className="admin-link"
                 >
                   {transaction.vendorNameSnapshot}
+                  <ArrowUpRight className="h-4 w-4" />
                 </Link>
                 <p className="text-muted-foreground">
                   {transaction.description ?? "Transaction request"}

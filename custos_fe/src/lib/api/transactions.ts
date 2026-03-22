@@ -1,5 +1,5 @@
 import type { Transaction, PaginatedResponse } from "@/lib/types";
-import { apiGet, apiPost, apiPatch } from "./client";
+import { apiGet, apiPost, apiPatch, apiRelativeGet, apiRelativePatch } from "./client";
 
 export async function getTransactions(params?: {
   page?: number;
@@ -23,11 +23,11 @@ export async function getTransactions(params?: {
   if (params?.dateTo) search.set("dateTo", params.dateTo);
   if (params?.sort) search.set("sort", params.sort);
   const q = search.toString();
-  return apiGet<PaginatedResponse<Transaction>>(`/api/transactions${q ? `?${q}` : ""}`);
+  return apiRelativeGet<PaginatedResponse<Transaction>>(`/api/transactions${q ? `?${q}` : ""}`);
 }
 
 export async function getTransaction(id: string): Promise<Transaction> {
-  return apiGet<Transaction>(`/api/transactions/${id}`);
+  return apiRelativeGet<Transaction>(`/api/transactions/${id}`);
 }
 
 export interface RequestTransactionBody {
@@ -66,7 +66,7 @@ export interface ReviewTransactionBody {
 }
 
 export async function reviewTransaction(id: string, body: ReviewTransactionBody): Promise<Transaction> {
-  return apiPatch<Transaction>(`/api/transactions/${id}/review`, body);
+  return apiRelativePatch<Transaction>(`/api/transactions/${id}/review`, body);
 }
 
 export async function updateTransactionStatus(id: string, status: string): Promise<Transaction> {

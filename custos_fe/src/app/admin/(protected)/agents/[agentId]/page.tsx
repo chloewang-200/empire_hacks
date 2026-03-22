@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ArrowUpRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -198,10 +198,14 @@ export default function AdminAgentDetailPage() {
                   </TableHeader>
                   <TableBody>
                     {(transactions ?? []).map((transaction) => (
-                      <TableRow key={transaction.transactionId}>
+                      <TableRow key={transaction.transactionId} className="admin-table-row">
                         <TableCell className="font-medium">
-                          <Link href={`/admin/transactions/${transaction.transactionId}`}>
+                          <Link
+                            href={`/admin/transactions/${transaction.transactionId}`}
+                            className="admin-link"
+                          >
                             {transaction.vendorNameSnapshot}
+                            <ArrowUpRight className="h-4 w-4" />
                           </Link>
                         </TableCell>
                         <TableCell>
@@ -224,6 +228,11 @@ export default function AdminAgentDetailPage() {
                         <TableCell>{formatDate(transaction.updatedAt)}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
+                            <Button size="sm" variant="outline" asChild>
+                              <Link href={`/admin/transactions/${transaction.transactionId}`}>
+                                Review
+                              </Link>
+                            </Button>
                             <Button
                               size="sm"
                               variant="outline"

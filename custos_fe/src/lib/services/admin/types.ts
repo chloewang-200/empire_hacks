@@ -79,11 +79,15 @@ export interface AdminTransactionAuditEvent {
 }
 
 export interface AdminTransaction {
+  id: string;
   transactionId: string;
   clientId: string;
   vendorId: string;
   vendorNameSnapshot: string;
   agentId: string | null;
+  agentName: string;
+  walletId: string;
+  walletName: string;
   requestedByUserId: string | null;
   transactionType: string;
   amount: number;
@@ -92,6 +96,9 @@ export interface AdminTransaction {
   paymentStatus: PaymentStatus;
   approvalStatus: ApprovalStatus;
   ruleEvaluationResult: RuleEvaluationResult;
+  status: string;
+  policyResult: string | null;
+  reviewState: "pending" | "approved" | "rejected";
   humanApprovalRequired: boolean;
   humanApprovalReceived: boolean;
   humanApprovedByUserId: string | null;
@@ -106,6 +113,28 @@ export interface AdminTransaction {
   failureReason: string | null;
   complianceFlags: string[];
   metadata: Record<string, unknown>;
+  recipient: string | null;
+  vendor: string | null;
+  category: string | null;
+  memo: string | null;
+  purpose: string | null;
+  context: Record<string, unknown> | null;
+  riskScore: number | null;
+  riskFlags: string[];
+  citedRules: Array<Record<string, unknown>>;
+  agentDecision: Record<string, unknown> | null;
+  matchedPayee: Record<string, unknown> | null;
+  evidence: Array<Record<string, unknown>>;
+  policyEvaluation: Array<Record<string, unknown>>;
+  auditEvents: Array<Record<string, unknown>>;
+  railType: string | null;
+  sourceKind: string | null;
+  payoutStatus: string | null;
+  payoutProvider: string | null;
+  payoutExternalId: string | null;
+  payoutError: string | null;
+  payoutAttemptedAt: string | null;
+  settledAt: string | null;
   createdAt: string;
   updatedAt: string;
   auditTrail: AdminTransactionAuditEvent[];

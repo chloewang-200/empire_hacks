@@ -6,7 +6,7 @@ export default async function AdminIndexPage() {
   const session = await getServerSession(authOptions);
 
   if (session?.user?.role === "admin") {
-    redirect("/admin/clients");
+    redirect("/admin/review-queue");
   }
 
   redirect("/admin/login");

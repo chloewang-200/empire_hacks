@@ -1,5 +1,5 @@
 import type { ReviewItem } from "@/lib/types";
-import { apiGet } from "./client";
+import { apiRelativeGet } from "./client";
 
 export async function getReviewQueue(params?: {
   page?: number;
@@ -9,5 +9,5 @@ export async function getReviewQueue(params?: {
   if (params?.page != null) search.set("page", String(params.page));
   if (params?.pageSize != null) search.set("pageSize", String(params.pageSize));
   const q = search.toString();
-  return apiGet<{ data: ReviewItem[]; total: number }>(`/api/review-queue${q ? `?${q}` : ""}`);
+  return apiRelativeGet<{ data: ReviewItem[]; total: number }>(`/api/review-queue${q ? `?${q}` : ""}`);
 }

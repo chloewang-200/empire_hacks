@@ -190,6 +190,18 @@
   .animate-scale-in {
     animation: scale-in 0.4s ease-out forwards;
   }
+  .admin-link {
+    @apply inline-flex items-center gap-1.5 font-medium text-foreground underline decoration-border underline-offset-4 transition-all hover:text-primary hover:decoration-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+  }
+  .admin-link-subtle {
+    @apply inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground underline decoration-transparent underline-offset-4 transition-all hover:text-foreground hover:decoration-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+  }
+  .admin-card-link {
+    @apply transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md focus-within:border-primary/40 focus-within:shadow-md;
+  }
+  .admin-table-row {
+    @apply transition-colors hover:bg-muted/60;
+  }
   @keyframes fade-up {
     from {
       opacity: 0;

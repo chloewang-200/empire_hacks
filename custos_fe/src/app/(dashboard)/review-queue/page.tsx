@@ -13,8 +13,9 @@ import { TransactionStatusBadge } from "@/components/status/StatusBadge";
 
 export default function ReviewQueuePage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ["review-queue", { page: 1, pageSize: 50 }],
+    retry: false,
     queryFn: () => getReviewQueue({ page: 1, pageSize: 50 }),
   });
 
@@ -48,6 +49,10 @@ export default function ReviewQueuePage() {
         <CardContent>
           {isLoading ? (
             <Skeleton className="h-32 w-full" />
+          ) : error ? (
+            <div className="py-4 text-sm text-destructive">
+              {error instanceof Error ? error.message : "Could not load review items."}
+            </div>
           ) : items.length === 0 ? (
             <EmptyState
               title="Queue is empty"

@@ -60,11 +60,12 @@ function TransactionsPageContent() {
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: [
       "transactions",
       { page: 1, pageSize: 50, status: statusFilter === "all" ? undefined : statusFilter },
     ],
+    retry: false,
     queryFn: () =>
       getTransactions({
         page: 1,
@@ -106,6 +107,10 @@ function TransactionsPageContent() {
           <div className="p-6 space-y-3">
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
+          </div>
+        ) : error ? (
+          <div className="p-6 text-sm text-destructive">
+            {error instanceof Error ? error.message : "Could not load transactions."}
           </div>
         ) : transactions.length === 0 ? (
           <EmptyState

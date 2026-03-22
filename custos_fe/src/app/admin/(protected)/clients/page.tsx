@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Building2, Receipt, ShieldAlert, Wallet } from "lucide-react";
+import { ArrowUpRight, Building2, Receipt, ShieldAlert, Wallet } from "lucide-react";
 import { KPIStatCard } from "@/components/cards/KPIStatCard";
 import { AdminClientStatusBadge } from "@/components/admin/AdminStatusBadge";
 import {
@@ -83,10 +83,11 @@ export default function AdminClientsPage() {
               </TableHeader>
               <TableBody>
                 {clients.map((client) => (
-                  <TableRow key={client.clientId} className="cursor-pointer">
+                  <TableRow key={client.clientId} className="admin-table-row">
                     <TableCell className="font-medium">
-                      <Link href={`/admin/clients/${client.clientId}`}>
+                      <Link href={`/admin/clients/${client.clientId}`} className="admin-link">
                         {client.clientName}
+                        <ArrowUpRight className="h-4 w-4" />
                       </Link>
                       <p className="text-xs text-muted-foreground">{client.clientId}</p>
                     </TableCell>

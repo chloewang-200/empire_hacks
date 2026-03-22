@@ -1,5 +1,5 @@
 import type { Transaction, PaginatedResponse } from "@/lib/types";
-import { apiGet } from "./client";
+import { apiRelativeGet } from "./client";
 
 export async function getAdminTransactions(params?: {
   page?: number;
@@ -15,5 +15,5 @@ export async function getAdminTransactions(params?: {
   if (params?.walletId) search.set("walletId", params.walletId);
   if (params?.agentId) search.set("agentId", params.agentId);
   const q = search.toString();
-  return apiGet<PaginatedResponse<Transaction>>(`/api/admin/transactions${q ? `?${q}` : ""}`);
+  return apiRelativeGet<PaginatedResponse<Transaction>>(`/api/admin/transactions${q ? `?${q}` : ""}`);
 }

@@ -34,21 +34,29 @@ export default function LoginPage() {
     setIsLoadingEmail(true);
 
     if (!authEnabled) {
-      router.push(email.trim().toLowerCase() === "admin@custos.ai" ? "/admin/clients" : "/overview");
+      router.push(email.trim().toLowerCase() === "admin@custos.ai" ? "/admin/review-queue" : "/overview");
       return;
     }
 
-    // Use redirect-based auth flow to avoid JSON parsing issues in NextAuth client.
     const isAdmin = email.trim().toLowerCase() === "admin@custos.ai";
-    const result = await signIn("credentials", {
-      email,
-      callbackUrl: isAdmin ? "/admin/clients" : "/overview",
-    });
+    try {
+      const result = await signIn("credentials", {
+        email,
+        callbackUrl: isAdmin ? "/admin/review-queue" : "/overview",
+        redirect: false,
+      });
 
-    setIsLoadingEmail(false);
+      if (result?.error) {
+        setEmailError("We couldn't sign you in with that email.");
+        return;
+      }
 
-    if (result?.error) {
-      setEmailError("We couldn't sign you in with that email.");
+      router.push(result?.url ?? (isAdmin ? "/admin/review-queue" : "/overview"));
+      router.refresh();
+    } catch {
+      setEmailError("Sign-in failed. Please try again.");
+    } finally {
+      setIsLoadingEmail(false);
     }
   }
 
